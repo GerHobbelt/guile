@@ -21,6 +21,15 @@ definitely unused---this is notably the case for modules that are only
 used at macro-expansion time, such as (srfi srfi-26).  In those cases,
 the compiler reports it as "possibly unused".
 
+** copy-file now supports copy-on-write
+
+The copy-file procedure now takes an additional keyword argument,
+#:copy-on-write, specifying whether copy-on-write should be done, if the
+underlying file-system supports it.  Possible values are 'always, 'auto
+and 'never, with 'auto being the default.
+
+This speeds up copying large files a lot while saving the disk space.
+
 * Bug fixes
 
 ** (ice-9 suspendable-ports) incorrect UTF-8 decoding
@@ -41,6 +50,9 @@ the compiler reports it as "possibly unused".
    (<https://bugs.gnu.org/55356>)
 ** 'read-u8' in (scheme base) now defaults to (current-input-port)
    (<https://bugs.gnu.org/62690>)
+** 'ftw' now correctly deals with directory permissions
+   (<https://bugs.gnu.org/55344>)
+** 'make-custom-port' now honors its #:conversion-strategy argument
 ** Hashing of UTF-8 symbols with non-ASCII characters avoids corruption
    (<https://bugs.gnu.org/56413>)
 
