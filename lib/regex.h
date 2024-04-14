@@ -647,7 +647,7 @@ extern int re_exec (const char *);
      || 2 < __GNUC__ + (95 <= __GNUC_MINOR__) \
      || __clang_major__ >= 3
 #  define _Restrict_ __restrict
-# elif 199901L <= __STDC_VERSION__ || defined restrict
+# elif (199901L <= __STDC_VERSION__ || defined restrict) && !defined(_MSC_VER)
 #  define _Restrict_ restrict
 # else
 #  define _Restrict_
