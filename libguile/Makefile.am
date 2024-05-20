@@ -62,14 +62,15 @@ gen_scmconfig_SOURCES = gen-scmconfig.c
 ## Override default rule; this should be compiled for BUILD host.  Note
 ## that we don't add $(AM_CPPFLAGS) here, as we need to run this
 ## program, but $(top_srcdir)/lib has a gnulib configured for the
-## target.  Instead we manually add $(top_builddir), in order to pick up
-## the generated config.h and gen-scmconfig.h.  Nothing else from Guile
-## is included by this code generator.
+## target.  Instead we manually add $(top_builddir) and the current
+## directory, in order to pick up the generated config.h and
+## gen-scmconfig.h.  Nothing else from Guile is included by this code
+## generator.
 gen-scmconfig.$(OBJEXT): gen-scmconfig.c
 	$(AM_V_GEN) \
 	if [ "$(cross_compiling)" = "yes" ]; then \
 		$(CC_FOR_BUILD) $(DEFS) $(DEFAULT_INCLUDES) -I$(top_builddir) \
-		   -c -o $@ $<; \
+		   -I. -c -o $@ $<; \
 	else \
 		$(COMPILE) -c -o $@ $<; \
 	fi
@@ -492,9 +493,9 @@ install-exec-hook:
 
 ## Instantiate a template.
 INSTANTIATE =									\
-  $(SED) -i -e 's,[@]pkgdatadir[@],$(pkgdatadir),g'				\
-            -e 's,[@]pkglibdir[@],$(pkglibdir),g'				\
-            -e 's,[@]GUILE_EFFECTIVE_VERSION[@],$(GUILE_EFFECTIVE_VERSION),g'
+  $(SED) -e 's,[@]pkgdatadir[@],$(pkgdatadir),g'				\
+         -e 's,[@]pkglibdir[@],$(pkglibdir),g'					\
+         -e 's,[@]GUILE_EFFECTIVE_VERSION[@],$(GUILE_EFFECTIVE_VERSION),g'
 
 install-data-hook: libguile-@GUILE_EFFECTIVE_VERSION@-gdb.scm
 	@$(MKDIR_P) $(DESTDIR)$(libdir)
@@ -518,9 +519,9 @@ install-data-hook: libguile-@GUILE_EFFECTIVE_VERSION@-gdb.scm
 	cd $$here;						\
 	echo " $(INSTALL_DATA) $<				\
 $(DESTDIR)$(libdir)/$$libname-gdb.scm";				\
-	$(INSTALL_DATA) "$<"					\
-	    "$(DESTDIR)$(libdir)/$$libname-gdb.scm";		\
-	$(INSTANTIATE) "$(DESTDIR)$(libdir)/$$libname-gdb.scm"
+	$(INSTANTIATE) "$<" > $$libname-gdb.scm;		\
+	$(INSTALL_DATA) $$libname-gdb.scm			\
+	    "$(DESTDIR)$(libdir)/$$libname-gdb.scm";
 
 # Remove the GDB support file and the Info 'dir' file that
 # 'install-info' 5.x installs.
