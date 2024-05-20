@@ -37,8 +37,14 @@ SEEK_HOLE values can now be passed to the 'seek' procedure to change
 file offset to the next piece of data or to the next hole in sparse
 files.  See "Random Access" in the manual for details.
 
+** ((scm foreign-object) make-foreign-object-type) now supports #:super
+
+A list of superclasses can now be provided via #:super.
+
 * Bug fixes
 
+** Fix incorrect comparison between exact and inexact numbers
+   (<https://debbugs.gnu.org/69725>)
 ** (ice-9 suspendable-ports) incorrect UTF-8 decoding
    (<https://bugs.gnu.org/62290>)
 ** Fix invalid use of 'posix_spawn' on non-glibc systems
@@ -59,6 +65,8 @@ files.  See "Random Access" in the manual for details.
    (<https://bugs.gnu.org/55356>)
 ** 'read-u8' in (scheme base) now defaults to (current-input-port)
    (<https://bugs.gnu.org/62690>)
+** Second argument of 'unread-string' is now optional, as previously documented
+   (<https://bugs.gnu.org/67063>)
 ** 'ftw' now correctly deals with directory permissions
    (<https://bugs.gnu.org/55344>)
 ** 'make-custom-port' now honors its #:conversion-strategy argument
