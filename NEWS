@@ -5,6 +5,23 @@ See the end for copying conditions.
 Please send Guile bug reports to bug-guile@gnu.org.
 
 
+Changes in 3.0.11 (since 3.0.10)
+
+* Notable changes
+
+** R7RS `cond-expand` now supports `else` (<https://debbugs.gnu.org/71304>)
+
+* Changes to the distribution
+
+* Bug fixes
+
+** `basename` now checks the suffix against the base name, not the full path
+   (<https://debbugs.gnu.org/69437>)
+** test-hashing should now work on 32-bit systems
+** GUILE-VERSION changes should propagate to .version and relevant Makefiles
+   (<https://debbugs.gnu.org/72084>)
+
+
 Changes in 3.0.10 (since 3.0.9)
 
 * Notable changes
