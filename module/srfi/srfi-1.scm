@@ -262,6 +262,24 @@ INIT-PROC is applied to the indices is not specified."
         acc
         (lp (- n 1) (cons (init-proc (- n 1)) acc)))))
 
+(define (list-copy lst)
+  "Return a copy of the given list @var{lst}.
+@var{lst} can be a proper or improper list.  And if @var{lst} is not a
+pair then it's treated as the final tail of an improper list and simply
+returned."
+  ;; This routine differs from the core list-copy in allowing improper
+  ;; lists.  Maybe the core could allow them too.
+  (if (not (pair? lst))
+      lst
+      (let ((result (cons (car lst) (cdr lst))))
+        (let lp ((tail result))
+          (let ((next (cdr tail)))
+            (if (pair? next)
+                (begin
+                  (set-cdr! tail (cons (car next) (cdr next)))
+                  (lp next))
+                result))))))
+
 (define (circular-list elt1 . elts)
   (set! elts (cons elt1 elts))
   (set-cdr! (last-pair elts) elts)
@@ -716,6 +734,74 @@ the list returned."
 	(begin
 	  (apply f l)
 	  (lp (map cdr l)))))))
+
+
+;;; Filtering & partitioning
+
+(define (list-prefix-and-tail lst stop)
+  (when (eq? lst stop)
+    (error "Prefix cannot be empty"))
+  (let ((rl (list (car lst))))
+    (let lp ((lst (cdr lst)) (tail rl))
+      (if (eq? lst stop)
+          (values rl tail)
+          (let ((new-tail (list (car lst))))
+            (set-cdr! tail new-tail)
+            (lp (cdr lst) new-tail))))))
+
+(define (remove pred lst)
+  "Return a list containing all elements from @var{list} which do not
+satisfy the predicate @var{pred}.  The elements in the result list have
+the same order as in @var{list}.  The order in which @var{pred} is
+applied to the list elements is not specified, and the result may share
+a common tail with @{list}."
+  ;; Traverse the lst, keeping the tail of it, in which we have yet to
+  ;; find a duplicate, in last-kept.  Share that tail with the result
+  ;; (possibly the entire original lst).  Build the result by
+  ;; destructively appending unique values to its tail, and henever we
+  ;; find a duplicate, copy the pending last-kept prefix into the result
+  ;; and move last-kept forward to the current position in lst.
+  (if (null? lst)
+      lst
+      (let ((result (list #f)))
+        (let lp ((lst lst)
+                 (last-kept lst)
+                 (tail result))
+          (if (null? lst)
+              (begin
+                (set-cdr! tail last-kept)
+                (cdr result))
+              (let ((item (car lst)))
+                (if (pred item)
+                    (if (eq? last-kept lst)
+                        (lp (cdr lst) (cdr lst) tail)
+                        (call-with-values
+                            (lambda () (list-prefix-and-tail last-kept lst))
+                          (lambda (prefix new-tail)
+                            (set-cdr! tail prefix)
+                            (lp (cdr lst) (cdr lst) new-tail))))
+                    (lp (cdr lst) last-kept tail))))))))
+
+(define (remove! pred lst)
+  "Return a list containing all elements from @var{list} which do not
+satisfy the predicate @var{pred}.  The elements in the result list have
+the same order as in @var{list}.  The order in which @var{pred} is
+applied to the list elements is not specified. @var{list} may be
+modified to build the return list."
+  (cond
+   ((null? lst) lst)
+   ((pred (car lst)) (remove! pred (cdr lst)))
+   (else
+    (let lp ((prev lst))
+      (let ((next (cdr prev)))
+        (if (null? next)
+            lst
+            (let ((x (car next)))
+              (if (pred x)
+                  (begin
+                    (set-cdr! prev (cdr next))
+                    (lp prev))
+                  (lp next)))))))))
 
 
 ;;; Searching
