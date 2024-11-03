@@ -1,4 +1,4 @@
-/* Copyright 1995-1998,2000-2014,2018-2019,2023
+/* Copyright 1995-1998,2000-2014,2018-2019,2023-2024
      Free Software Foundation, Inc.
 
    This file is part of Guile.
@@ -492,9 +492,8 @@ on_thread_exit (void *v)
   t->handle = SCM_PACK (0);
 
   /* If there's only one other thread, it could be the signal delivery
-     thread, so we need to notify it to shut down by closing its read pipe.
-     If it's not the signal delivery thread, then closing the read pipe isn't
-     going to hurt.  */
+     thread, in which case we should shut it down also by closing its
+     read pipe.  */
   if (thread_count <= 1)
     scm_i_close_signal_pipe ();
 
@@ -1398,9 +1397,10 @@ SCM_DEFINE (scm_timed_wait_condition_variable, "wait-condition-variable", 2, 1, 
 "it specifies a point in time where the waiting should be aborted.  It "
 "can be either a integer as returned by @code{current-time} or a pair "
 "as returned by @code{gettimeofday}.  When the waiting is aborted the "
-"mutex is locked and @code{#f} is returned.  When the condition "
-"variable is in fact signaled, the mutex is also locked and @code{#t} "
-"is returned. ")
+"mutex is locked and @code{#f} is returned.  After the condition "
+"variable is signaled, the mutex is locked and @code{#t} is returned.  "
+"@code{#t} may also be returned spuriously, so any relevant conditions "
+"should be re-checked.")
 #define FUNC_NAME s_scm_timed_wait_condition_variable
 {
   scm_t_timespec waittime_val, *waittime = NULL;
@@ -1691,9 +1691,7 @@ SCM_DEFINE (scm_all_threads, "all-threads", 0, 0, 0,
 
   for (t = all_threads; t && n > 0; t = t->next_thread)
     {
-      if (!t->exited
-          && (scm_is_false (scm_i_signal_delivery_thread)
-              || (!scm_is_eq (t->handle, scm_i_signal_delivery_thread))))
+      if (!t->exited && !scm_i_is_signal_delivery_thread (t))
 	{
 	  SCM_SETCAR (*l, t->handle);
 	  l = SCM_CDRLOC (*l);
