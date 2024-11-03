@@ -22,6 +22,9 @@
   #:use-module (test-suite lib)
   #:use-module ((rnrs io ports) #:select (get-string-all)))
 
+(define (skip-on-darwin)
+  (when (string-ci=? "darwin" (utsname:sysname (uname)))
+    (throw 'untested)))
 
 ;; FIXME: The following exec tests are disabled since on an i386 debian with
 ;; glibc 2.3.2 they seem to interact badly with threads.test, the latter
@@ -362,7 +365,8 @@
 
   (pass-if-equal "https://bugs.gnu.org/52835"
       "bong\n"
-    (let ((file (tmpnam)))
+    (let* ((port (mkstemp "T-XXXXXX"))
+           (file (port-filename port)))
       ;; Redirect stdout and stderr to FILE.
       (define status
         (call-with-output-file file
@@ -373,8 +377,9 @@
                   (lambda ()
                     (system* "sh" "-c" "echo bong >&2"))))))))
 
+      (delete-file file)
       (and (zero? (status:exit-val status))
-           (call-with-input-file file get-string-all))))
+           (get-string-all port))))
 
   (pass-if-equal "https://bugs.gnu.org/63024"
       0
@@ -442,12 +447,23 @@
         (close-port (car input+output))
         (waitpid pid)
 
-        ;; On GNU/Hurd, the exec server prepends 'LD_ORIGIN_PATH' for
-        ;; every program: <https://bugs.gnu.org/62501>.  Strip it.
-        (if (and (string=? "GNU" (utsname:sysname (uname)))
-                 (string-prefix? "LD_ORIGIN_PATH=" str))
-            (string-drop str (+ 1 (string-index str #\newline)))
-            str))))
+        (let ((sysname (utsname:sysname (uname))))
+          (cond
+           ((string=? "GNU" sysname)
+            ;; On GNU/Hurd, the exec server prepends 'LD_ORIGIN_PATH' for
+            ;; every program: <https://bugs.gnu.org/62501>.  Strip it.
+            (if (string-prefix? "LD_ORIGIN_PATH=" str)
+                (string-drop str (+ 1 (string-index str #\newline)))
+                str))
+           ((string-ci=? "darwin" sysname)
+            ;; MacOS appends '__CF_USER_TEXT_ENCODING' for every program.  Strip
+            ;; it.
+            (let ((pos (string-contains str "__CF_USER_TEXT_ENCODING=")))
+              (if pos
+                  (string-drop-right str (- (string-length str) pos))
+                  str)))
+           (else
+            str))))))
 
   (pass-if-equal "ls /proc/self/fd"
       "0\n1\n2\n3\n"                     ;fourth FD is for /proc/self/fd
@@ -464,6 +480,11 @@
 
   (pass-if-equal "file not found"
       ENOENT
+    ;; Actually "skip-if-posix_spawn-replaced" would be preferred, since the
+    ;; behavior below is not implemented in gnulib, but I do not know how to
+    ;; write such test.  However due to posix_spawnp being buggy on macOS it is
+    ;; always replaced, so whatever.
+    (skip-on-darwin)
     (catch 'system-error
       (lambda ()
         (spawn "this-does-not-exist" '("nope")
