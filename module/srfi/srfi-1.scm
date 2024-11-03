@@ -445,6 +445,88 @@ a list of those after."
 
 ;;; Miscelleneous: length, append, concatenate, reverse, zip & count
 
+(define (length+ lst)
+  "Return the length of @var{lst}, or @code{#f} if @var{lst} is circular."
+  (let lp ((tortoise lst)
+           (hare lst)
+           (i 0))
+    (if (not-pair? hare)
+        (if (null? hare)
+            i
+            (scm-error 'wrong-type-arg "length+"
+                       "Argument not a proper or circular list: ~s"
+                       (list lst) (list lst)))
+        (let ((hare (cdr hare)))
+          (if (not-pair? hare)
+              (if (null? hare)
+                  (1+ i)
+                  (scm-error 'wrong-type-arg "length+"
+                             "Argument not a proper or circular list: ~s"
+                             (list lst) (list lst)))
+              (let ((tortoise (cdr tortoise))
+                    (hare (cdr hare)))
+                (if (eq? hare tortoise)
+                    #f
+                    (lp tortoise hare (+ i 2)))))))))
+
+(define (concatenate lists)
+  "Construct a list by appending all lists in @var{lists}.
+
+@code{concatenate} is the same as @code{(apply append @var{lists})}.
+It exists because some Scheme implementations have a limit on the number
+of arguments a function takes, which the @code{apply} might exceed.  In
+Guile there is no such limit."
+  (apply append lists))
+
+(define (concatenate! lists)
+  "Construct a list by appending all lists in @var{lists}.  Those
+lists may be modified to produce the result.
+
+@code{concatenate!} is the same as @code{(apply append!  @var{lists})}.
+It exists because some Scheme implementations have a limit on the number
+of arguments a function takes, which the @code{apply} might exceed.  In
+Guile there is no such limit."
+  (apply append! lists))
+
+(define (append-reverse rev-head tail)
+  "Reverse @var{rev-head}, append @var{tail} to it, and return the
+result.  This is equivalent to @code{(append (reverse @var{rev-head})
+@var{tail})}, but its implementation is more efficient.
+
+@example
+(append-reverse '(1 2 3) '(4 5 6)) @result{} (3 2 1 4 5 6)
+@end example"
+  (let lp ((rh rev-head)
+           (result tail))
+    (if (pair? rh)
+        (lp (cdr rh) (cons (car rh) result))
+        (begin
+          (unless (null? rh)
+            (wrong-type-arg 'append-reverse rev-head))
+          result))))
+
+(define (append-reverse! rev-head tail)
+  "Reverse @var{rev-head}, append @var{tail} to it, and return the
+result.  This is equivalent to @code{(append! (reverse!  @var{rev-head})
+@var{tail})}, but its implementation is more efficient.
+
+@example
+(append-reverse! (list 1 2 3) '(4 5 6)) @result{} (3 2 1 4 5 6)
+@end example
+
+@var{rev-head} may be modified in order to produce the result."
+  (let lp ((rh rev-head)
+           (result tail))
+    (if (pair? rh)
+        (let ((next rh)
+              (rh (cdr rh)))
+          (set-cdr! next result)
+          (lp rh next))
+        (begin
+          (unless (null? rh)
+            (wrong-type-arg 'append-reverse! rev-head))
+          result))))
+
 (define (zip clist1 . rest)
   (let lp ((l (cons clist1 rest)) (acc '()))
     (if (any null? l)
@@ -463,6 +545,27 @@ a list of those after."
 (define (unzip5 l)
   (values (map first l) (map second l) (map third l) (map fourth l)
 	  (map fifth l)))
+
+(define count
+  (case-lambda
+    ((pred lst)
+     (let lp ((lst lst) (c 0))
+       (if (null? lst)
+           c
+           (lp (cdr lst) (if (pred (car lst)) (1+ c) c)))))
+    ((pred l1 l2)
+     (let lp ((l1 l1) (l2 l2) (c 0))
+       (if (or (null? l1) (null? l2))
+           c
+           (lp (cdr l1) (cdr l2)
+               (if (pred (car l1) (car l2)) (1+ c) c)))))
+    ((pred lst . lists)
+     (let lp ((lst lst) (lists lists) (c 0))
+       (if (or (null? lst) (any null? lists))
+           c
+           (lp (cdr lst)
+               (map cdr lists)
+               (if (apply pred (car lst) (map car lists)) (1+ c) c)))))))
 
 ;;; Fold, unfold & map
 
@@ -738,6 +841,28 @@ the list returned."
 
 ;;; Filtering & partitioning
 
+(define (partition pred lst)
+  "Partition the elements of @var{list} with predicate @var{pred}.
+Return two values: the list of elements satisfying @var{pred} and the
+list of elements @emph{not} satisfying @var{pred}.  The order of the
+output lists follows the order of @var{list}.  @var{list} is not
+mutated.  One of the output lists may share memory with @var{list}."
+  (let ((matches (list #f))
+        (mismatches (list #f)))
+    (let lp ((lst lst)
+             (matches-end matches)
+             (mismatches-end mismatches))
+      (if (null? lst)
+          (values (cdr matches) (cdr mismatches))
+          (let ((x (car lst)))
+            (if (pred x)
+                (begin
+                  (set-cdr! matches-end (list x))
+                  (lp (cdr lst) (cdr matches-end) mismatches-end))
+                (begin
+                  (set-cdr! mismatches-end (list x))
+                  (lp (cdr lst) matches-end (cdr mismatches-end)))))))))
+
 (define (list-prefix-and-tail lst stop)
   (when (eq? lst stop)
     (error "Prefix cannot be empty"))
@@ -781,6 +906,27 @@ a common tail with @{list}."
                             (set-cdr! tail prefix)
                             (lp (cdr lst) (cdr lst) new-tail))))
                     (lp (cdr lst) last-kept tail))))))))
+
+(define (partition! pred lst)
+  "Partition the elements of @var{list} with predicate @var{pred}.
+Return two values: the list of elements satisfying @var{pred} and the
+list of elements @emph{not} satisfying @var{pred}.  The order of the
+output lists follows the order of @var{list}.  @var{list} is not
+mutated.  @var{lst} may be modified to construct the return lists."
+  (let ((matches (cons #f lst))
+        (mismatches (list #f)))
+    (let lp ((matches-next matches)
+             (mismatches-end mismatches))
+      (let ((next (cdr matches-next)))
+        (if (null? next)
+            (values (cdr matches) (cdr mismatches))
+            (let ((x (car next)))
+              (if (pred x)
+                  (lp (cdr matches-next) mismatches-end)
+                  (begin
+                    (set-cdr! matches-next (cdr next))
+                    (set-cdr! mismatches-end (list x))
+                    (lp matches-next (cdr mismatches-end))))))))))
 
 (define (remove! pred lst)
   "Return a list containing all elements from @var{list} which do not
@@ -982,6 +1128,80 @@ CLIST1 ... CLISTN, that satisfies PRED."
 	    (else
 	     (lp (map cdr lists) (+ i 1)))))))
 
+;;; Deletion
+
+(define* (delete x lst #:optional (pred equal?))
+  "Return a list containing the elements of @var{lst} but with
+those equal to @var{x} deleted.  The returned elements will be in the
+same order as they were in @var{lst}.
+
+Equality is determined by @var{pred}, or @code{equal?} if not given.  An
+equality call is made just once for each element, but the order in which
+the calls are made on the elements is unspecified.
+
+The equality calls are always @code{(pred x elem)}, ie.@: the given
+@var{x} is first.  This means for instance elements greater than 5 can
+be deleted with @code{(delete 5 lst <)}.
+
+@var{lst} is not modified, but the returned list might share a common
+tail with @var{lst}."
+  (remove (lambda (elem) (pred x elem)) lst))
+
+(define (member-before x lst stop =)
+  (cond
+   ((null? lst) #f)
+   ((eq? lst stop) #f)
+   ((= (car lst) x) #t)
+   (else (member-before x (cdr lst) stop =))))
+
+(define* (delete! x lst #:optional (pred equal?))
+  "Return a list containing the elements of @var{lst} but with
+those equal to @var{x} deleted.  The returned elements will be in the
+same order as they were in @var{lst}.
+
+Equality is determined by @var{pred}, or @code{equal?} if not given.  An
+equality call is made just once for each element, but the order in which
+the calls are made on the elements is unspecified.
+
+The equality calls are always @code{(pred x elem)}, ie.@: the given
+@var{x} is first.  This means for instance elements greater than 5 can
+be deleted with @code{(delete 5 lst <)}.
+
+@var{lst} may be modified to construct the returned list."
+  (remove! (lambda (elem) (pred x elem)) lst))
+
+(define* (delete-duplicates! lst #:optional (= equal?))
+  "Return a list containing the elements of @var{lst} but without
+duplicates.
+
+When elements are equal, only the first in @var{lst} is retained.  Equal
+elements can be anywhere in @var{lst}, they don't have to be adjacent.
+The returned list will have the retained elements in the same order as
+they were in @var{lst}.
+
+Equality is determined by @var{=}, or @code{equal?} if not given.
+Calls @code{(= x y)} are made with element @var{x} being before
+@var{y} in @var{lst}.  A call is made at most once for each combination,
+but the sequence of the calls across the elements is unspecified.
+
+@var{lst} is not modified, but the return might share a common tail with
+@var{lst}.
+
+In the worst case, this is an @math{O(N^2)} algorithm because it must
+check each element against all those preceding it.  For long lists it is
+more efficient to sort and then compare only adjacent elements."
+  (if (null? lst)
+      lst
+      (let lp ((tail lst))
+        (let ((next (cdr tail)))
+          (if (null? next)
+              lst
+              (if (member-before (car next) lst next =)
+                  (begin
+                    (set-cdr! tail (cdr next))
+                    (lp tail))
+                  (lp next)))))))
+
 ;;; Association lists
 
 (define alist-cons acons)
@@ -1120,18 +1340,32 @@ given REST parameters."
 	(lp (cdr l) (cons (car l) acc))
 	(lp (cdr l) acc)))))
 
-(define (lset-difference = list1 . rest)
-  (check-arg procedure? = lset-difference)
-  (if (null? rest)
-    list1
-    (let lp ((l list1) (acc '()))
-      (if (null? l)
-	(reverse! acc)
-	(if (any (lambda (ll) (member (car l) ll =)) rest)
-	  (lp (cdr l) acc)
-	  (lp (cdr l) (cons (car l) acc)))))))
+(define (lset-difference = lset . removals)
+  "Return @var{lst} with any elements in the lists in @var{removals}
+removed (ie.@: subtracted).  For only one @var{lst} argument, just that
+list is returned.
 
-;(define (fold kons knil list1 . rest)
+The given @var{equal} procedure is used for comparing elements, called
+as @code{(@var{equal} elem1 elemN)}.  The first argument is from
+@var{lst} and the second from one of the subsequent lists.  But exactly
+which calls are made and in what order is unspecified.
+
+@example
+(lset-difference eqv? (list 'x 'y))           @result{} (x y)
+(lset-difference eqv? (list 1 2 3) '(3 1))    @result{} (2)
+(lset-difference eqv? (list 1 2 3) '(3) '(2)) @result{} (1)
+@end example
+
+The result may share a common tail with @var{lset}."
+  ;; REVIEW: if we think they're actually going to be sets, i.e. no
+  ;; duplicates, then might it be better to just reduce via per-set
+  ;; delete -- more transient allocation but maybe a lot less work?
+  (check-arg procedure? = lset-difference)
+  (cond
+   ((null? lset) lset)
+   ((null? removals) lset)
+   (else (remove (lambda (x) (any (lambda (s) (member x s =)) removals))
+                 lset))))
 
 (define (lset-xor = . rest)
   (check-arg procedure? = lset-xor)
@@ -1168,6 +1402,30 @@ given REST parameters."
 (define (lset-intersection! = list1 . rest)
   (check-arg procedure? = lset-intersection!)
   (apply lset-intersection = list1 rest)) ; XXX:optimize
+
+(define (lset-difference! = lset . removals)
+  "Return @var{lst} with any elements in the lists in @var{removals}
+removed (ie.@: subtracted).  For only one @var{lst} argument, just that
+list is returned.
+
+The given @var{equal} procedure is used for comparing elements, called
+as @code{(@var{equal} elem1 elemN)}.  The first argument is from
+@var{lst} and the second from one of the subsequent lists.  But exactly
+which calls are made and in what order is unspecified.
+
+@example
+(lset-difference! eqv? (list 'x 'y))           @result{} (x y)
+(lset-difference! eqv? (list 1 2 3) '(3 1))    @result{} (2)
+(lset-difference! eqv? (list 1 2 3) '(3) '(2)) @result{} (1)
+@end example
+
+@code{lset-difference!} may modify @var{lst} to form its result."
+  (check-arg procedure? = lset-intersection!)
+  (cond
+   ((null? lset) lset)
+   ((null? removals) lset)
+   (else (remove! (lambda (x) (any (lambda (s) (member x s =)) removals))
+                  lset))))
 
 (define (lset-xor! = . rest)
   (check-arg procedure? = lset-xor!)
