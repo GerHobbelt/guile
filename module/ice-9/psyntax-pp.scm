@@ -43,12 +43,11 @@
              (lambda (src in-order? names gensyms vals body)
                (make-struct/simple (vector-ref %expanded-vtables 17) src in-order? names gensyms vals body)))
             (lambda? (lambda (x) (and (struct? x) (eq? (struct-vtable x) (vector-ref %expanded-vtables 14)))))
+            (lambda-src (lambda (x) (struct-ref x 0)))
             (lambda-meta (lambda (x) (struct-ref x 1)))
-            (set-lambda-meta! (lambda (x v) (struct-set! x 1 v)))
-            (top-level-eval-hook (lambda (x mod) (primitive-eval x)))
-            (local-eval-hook (lambda (x mod) (primitive-eval x)))
-            (session-id
-             (let ((v (module-variable (current-module) 'syntax-session-id))) (lambda () ((variable-ref v)))))
+            (lambda-body (lambda (x) (struct-ref x 2)))
+            (top-level-eval (lambda (x mod) (primitive-eval x)))
+            (local-eval (lambda (x mod) (primitive-eval x)))
             (sourcev-filename (lambda (s) (vector-ref s 0)))
             (sourcev-line (lambda (s) (vector-ref s 1)))
             (sourcev-column (lambda (s) (vector-ref s 2)))
@@ -60,31 +59,56 @@
                        'filename
                        (sourcev-filename sourcev)
                        (list (cons 'line (sourcev-line sourcev)) (cons 'column (sourcev-column sourcev))))))))
-            (maybe-name-value!
+            (maybe-name-value
              (lambda (name val)
                (if (lambda? val)
                    (let ((meta (lambda-meta val)))
-                     (if (not (assq 'name meta)) (set-lambda-meta! val (acons 'name name meta)))))))
+                     (if (assq 'name meta) val (make-lambda (lambda-src val) (acons 'name name meta) (lambda-body val))))
+                   val)))
             (build-void (lambda (sourcev) (make-void sourcev)))
             (build-call (lambda (sourcev fun-exp arg-exps) (make-call sourcev fun-exp arg-exps)))
             (build-conditional
              (lambda (sourcev test-exp then-exp else-exp) (make-conditional sourcev test-exp then-exp else-exp)))
-            (build-lexical-reference (lambda (type sourcev name var) (make-lexical-ref sourcev name var)))
+            (build-lexical-reference (lambda (sourcev name var) (make-lexical-ref sourcev name var)))
             (build-lexical-assignment
-             (lambda (sourcev name var exp) (maybe-name-value! name exp) (make-lexical-set sourcev name var exp)))
+             (lambda (sourcev name var exp) (make-lexical-set sourcev name var (maybe-name-value name exp))))
             (analyze-variable
              (lambda (mod var modref-cont bare-cont)
-               (if (not mod)
-                   (bare-cont #f var)
-                   (let ((kind (car mod)) (mod (cdr mod)))
-                     (let ((key kind))
-                       (cond
-                         ((memv key '(public)) (modref-cont mod var #t))
-                         ((memv key '(private hygiene))
-                          (if (equal? mod (module-name (current-module))) (bare-cont mod var) (modref-cont mod var #f)))
-                         ((memv key '(bare)) (bare-cont var))
-                         ((memv key '(primitive)) (syntax-violation #f "primitive not in operator position" var))
-                         (else (syntax-violation #f "bad module kind" var mod))))))))
+               (let* ((v mod)
+                      (fk (lambda ()
+                            (let ((fk (lambda ()
+                                        (let ((fk (lambda ()
+                                                    (let ((fk (lambda ()
+                                                                (let ((fk (lambda () (error "value failed to match" v))))
+                                                                  (if (pair? v)
+                                                                      (let ((vx (car v)) (vy (cdr v)))
+                                                                        (if (eq? vx 'primitive)
+                                                                            (syntax-violation
+                                                                             #f
+                                                                             "primitive not in operator position"
+                                                                             var)
+                                                                            (fk)))
+                                                                      (fk))))))
+                                                      (if (pair? v)
+                                                          (let ((vx (car v)) (vy (cdr v)))
+                                                            (if (eq? vx 'bare) (bare-cont var) (fk)))
+                                                          (fk))))))
+                                          (if (pair? v)
+                                              (let ((vx (car v)) (vy (cdr v)))
+                                                (let ((tk (lambda ()
+                                                            (let ((mod vy))
+                                                              (if (equal? mod (module-name (current-module)))
+                                                                  (bare-cont mod var)
+                                                                  (modref-cont mod var #f))))))
+                                                  (if (eq? vx 'private)
+                                                      (tk)
+                                                      (let ((tk (lambda () (tk)))) (if (eq? vx 'hygiene) (tk) (fk))))))
+                                              (fk))))))
+                              (if (pair? v)
+                                  (let ((vx (car v)) (vy (cdr v)))
+                                    (if (eq? vx 'public) (let ((mod vy)) (modref-cont mod var #t)) (fk)))
+                                  (fk))))))
+                 (if (eq? v #f) (bare-cont #f var) (fk)))))
             (build-global-reference
              (lambda (sourcev var mod)
                (analyze-variable
@@ -94,16 +118,15 @@
                 (lambda (mod var) (make-toplevel-ref sourcev mod var)))))
             (build-global-assignment
              (lambda (sourcev var exp mod)
-               (maybe-name-value! var exp)
-               (analyze-variable
-                mod
-                var
-                (lambda (mod var public?) (make-module-set sourcev mod var public? exp))
-                (lambda (mod var) (make-toplevel-set sourcev mod var exp)))))
+               (let ((exp (maybe-name-value var exp)))
+                 (analyze-variable
+                  mod
+                  var
+                  (lambda (mod var public?) (make-module-set sourcev mod var public? exp))
+                  (lambda (mod var) (make-toplevel-set sourcev mod var exp))))))
             (build-global-definition
              (lambda (sourcev mod var exp)
-               (maybe-name-value! var exp)
-               (make-toplevel-define sourcev (and mod (cdr mod)) var exp)))
+               (make-toplevel-define sourcev (and mod (cdr mod)) var (maybe-name-value var exp))))
             (build-simple-lambda
              (lambda (src req rest vars meta exp)
                (make-lambda src meta (make-lambda-case src req #f rest #f '() vars exp #f))))
@@ -116,104 +139,209 @@
             (build-data (lambda (src exp) (make-const src exp)))
             (build-sequence
              (lambda (src exps)
-               (if (null? (cdr exps)) (car exps) (make-seq src (car exps) (build-sequence #f (cdr exps))))))
+               (let* ((v exps)
+                      (fk (lambda ()
+                            (let ((fk (lambda () (error "value failed to match" v))))
+                              (if (pair? v)
+                                  (let ((vx (car v)) (vy (cdr v)))
+                                    (let* ((head vx) (tail vy)) (make-seq src head (build-sequence #f tail))))
+                                  (fk))))))
+                 (if (pair? v) (let ((vx (car v)) (vy (cdr v))) (let ((tail vx)) (if (null? vy) tail (fk)))) (fk)))))
             (build-let
              (lambda (src ids vars val-exps body-exp)
-               (for-each maybe-name-value! ids val-exps)
-               (if (null? vars) body-exp (make-let src ids vars val-exps body-exp))))
+               (let* ((v (map maybe-name-value ids val-exps))
+                      (fk (lambda ()
+                            (let* ((fk (lambda () (error "value failed to match" v))) (val-exps v))
+                              (make-let src ids vars val-exps body-exp)))))
+                 (if (null? v) body-exp (fk)))))
             (build-named-let
              (lambda (src ids vars val-exps body-exp)
-               (let ((f (car vars)) (f-name (car ids)) (vars (cdr vars)) (ids (cdr ids)))
-                 (let ((proc (build-simple-lambda src ids #f vars '() body-exp)))
-                   (maybe-name-value! f-name proc)
-                   (for-each maybe-name-value! ids val-exps)
-                   (make-letrec
-                    src
-                    #f
-                    (list f-name)
-                    (list f)
-                    (list proc)
-                    (build-call src (build-lexical-reference 'fun src f-name f) val-exps))))))
+               (let* ((v vars) (fk (lambda () (error "value failed to match" v))))
+                 (if (pair? v)
+                     (let ((vx (car v)) (vy (cdr v)))
+                       (let* ((f vx) (vars vy) (v ids) (fk (lambda () (error "value failed to match" v))))
+                         (if (pair? v)
+                             (let ((vx (car v)) (vy (cdr v)))
+                               (let* ((f-name vx) (ids vy) (proc (build-simple-lambda src ids #f vars '() body-exp)))
+                                 (make-letrec
+                                  src
+                                  #f
+                                  (list f-name)
+                                  (list f)
+                                  (list (maybe-name-value f-name proc))
+                                  (build-call
+                                   src
+                                   (build-lexical-reference src f-name f)
+                                   (map maybe-name-value ids val-exps)))))
+                             (fk))))
+                     (fk)))))
             (build-letrec
              (lambda (src in-order? ids vars val-exps body-exp)
-               (if (null? vars)
-                   body-exp
-                   (begin
-                     (for-each maybe-name-value! ids val-exps)
-                     (make-letrec src in-order? ids vars val-exps body-exp)))))
+               (let* ((v (map maybe-name-value ids val-exps))
+                      (fk (lambda ()
+                            (let* ((fk (lambda () (error "value failed to match" v))) (val-exps v))
+                              (make-letrec src in-order? ids vars val-exps body-exp)))))
+                 (if (null? v) body-exp (fk)))))
             (gen-lexical (lambda (id) (module-gensym (symbol->string id))))
+            (no-source #f)
             (datum-sourcev
              (lambda (datum)
                (let ((props (source-properties datum)))
                  (and (pair? props) (vector (assq-ref props 'filename) (assq-ref props 'line) (assq-ref props 'column))))))
             (source-annotation (lambda (x) (if (syntax? x) (syntax-sourcev x) (datum-sourcev x))))
+            (binding-type (lambda (x) (car x)))
+            (binding-value (lambda (x) (cdr x)))
+            (null-env '())
             (extend-env
              (lambda (labels bindings r)
-               (if (null? labels)
-                   r
-                   (extend-env (cdr labels) (cdr bindings) (cons (cons (car labels) (car bindings)) r)))))
+               (let* ((v labels)
+                      (fk (lambda ()
+                            (let ((fk (lambda () (error "value failed to match" v))))
+                              (if (pair? v)
+                                  (let ((vx (car v)) (vy (cdr v)))
+                                    (let* ((label vx)
+                                           (labels vy)
+                                           (v bindings)
+                                           (fk (lambda () (error "value failed to match" v))))
+                                      (if (pair? v)
+                                          (let ((vx (car v)) (vy (cdr v)))
+                                            (let* ((binding vx) (bindings vy))
+                                              (extend-env labels bindings (acons label binding r))))
+                                          (fk))))
+                                  (fk))))))
+                 (if (null? v) r (fk)))))
             (extend-var-env
              (lambda (labels vars r)
-               (if (null? labels)
-                   r
-                   (extend-var-env (cdr labels) (cdr vars) (cons (cons (car labels) (cons 'lexical (car vars))) r)))))
+               (let* ((v labels)
+                      (fk (lambda ()
+                            (let ((fk (lambda () (error "value failed to match" v))))
+                              (if (pair? v)
+                                  (let ((vx (car v)) (vy (cdr v)))
+                                    (let* ((label vx)
+                                           (labels vy)
+                                           (v vars)
+                                           (fk (lambda () (error "value failed to match" v))))
+                                      (if (pair? v)
+                                          (let ((vx (car v)) (vy (cdr v)))
+                                            (let* ((var vx) (vars vy))
+                                              (extend-var-env labels vars (acons label (cons 'lexical var) r))))
+                                          (fk))))
+                                  (fk))))))
+                 (if (null? v) r (fk)))))
             (macros-only-env
              (lambda (r)
-               (if (null? r)
-                   '()
-                   (let ((a (car r)))
-                     (if (memq (cadr a) '(macro syntax-parameter ellipsis))
-                         (cons a (macros-only-env (cdr r)))
-                         (macros-only-env (cdr r)))))))
+               (let* ((v r)
+                      (fk (lambda ()
+                            (let ((fk (lambda () (error "value failed to match" v))))
+                              (if (pair? v)
+                                  (let ((vx (car v)) (vy (cdr v)))
+                                    (let* ((a vx)
+                                           (r vy)
+                                           (v a)
+                                           (fk (lambda ()
+                                                 (let ((fk (lambda () (error "value failed to match" v))))
+                                                   (macros-only-env r)))))
+                                      (if (pair? v)
+                                          (let ((vx (car v)) (vy (cdr v)))
+                                            (let ((k vx))
+                                              (if (pair? vy)
+                                                  (let ((vx (car vy)) (vy (cdr vy)))
+                                                    (let ((tk (lambda () (cons a (macros-only-env r)))))
+                                                      (if (eq? vx 'macro)
+                                                          (tk)
+                                                          (let ((tk (lambda () (tk))))
+                                                            (if (eq? vx 'syntax-parameter)
+                                                                (tk)
+                                                                (let ((tk (lambda () (tk))))
+                                                                  (if (eq? vx 'ellipsis) (tk) (fk))))))))
+                                                  (fk))))
+                                          (fk))))
+                                  (fk))))))
+                 (if (null? v) '() (fk)))))
             (global-extend
              (lambda (type sym val) (module-define! (current-module) sym (make-syntax-transformer sym type val))))
             (nonsymbol-id? (lambda (x) (and (syntax? x) (symbol? (syntax-expression x)))))
             (id? (lambda (x) (if (symbol? x) #t (and (syntax? x) (symbol? (syntax-expression x))))))
+            (id-sym-name (lambda (x) (if (syntax? x) (syntax-expression x) x)))
             (id-sym-name&marks
              (lambda (x w)
                (if (syntax? x)
-                   (values (syntax-expression x) (join-marks (car w) (car (syntax-wrap x))))
-                   (values x (car w)))))
-            (gen-label (lambda () (symbol->string (module-gensym "l"))))
-            (gen-labels (lambda (ls) (if (null? ls) '() (cons (gen-label) (gen-labels (cdr ls))))))
+                   (values (syntax-expression x) (join-marks (wrap-marks w) (wrap-marks (syntax-wrap x))))
+                   (values x (wrap-marks w)))))
+            (make-wrap (lambda (marks subst) (cons marks subst)))
+            (wrap-marks (lambda (wrap) (car wrap)))
+            (wrap-subst (lambda (wrap) (cdr wrap)))
+            (gen-unique
+             (lambda* (#:optional (module (current-module)))
+               (if module
+                   (vector (module-name module) (module-generate-unique-id! module))
+                   (vector '(guile) (gensym "id")))))
+            (gen-label (lambda () (gen-unique)))
+            (gen-labels
+             (lambda (ls)
+               (let* ((v ls)
+                      (fk (lambda ()
+                            (let ((fk (lambda () (error "value failed to match" v))))
+                              (if (pair? v)
+                                  (let ((vx (car v)) (vy (cdr v))) (let ((ls vy)) (cons (gen-label) (gen-labels ls))))
+                                  (fk))))))
+                 (if (null? v) '() (fk)))))
             (make-ribcage (lambda (symnames marks labels) (vector 'ribcage symnames marks labels)))
-            (ribcage? (lambda (x) (and (vector? x) (= (vector-length x) 4) (eq? (vector-ref x 0) 'ribcage))))
-            (ribcage-symnames (lambda (x) (vector-ref x 1)))
-            (ribcage-marks (lambda (x) (vector-ref x 2)))
-            (ribcage-labels (lambda (x) (vector-ref x 3)))
-            (set-ribcage-symnames! (lambda (x update) (vector-set! x 1 update)))
-            (set-ribcage-marks! (lambda (x update) (vector-set! x 2 update)))
-            (set-ribcage-labels! (lambda (x update) (vector-set! x 3 update)))
-            (anti-mark (lambda (w) (cons (cons #f (car w)) (cons 'shift (cdr w)))))
+            (ribcage-symnames (lambda (ribcage) (vector-ref ribcage 1)))
+            (ribcage-marks (lambda (ribcage) (vector-ref ribcage 2)))
+            (ribcage-labels (lambda (ribcage) (vector-ref ribcage 3)))
+            (set-ribcage-symnames! (lambda (ribcage x) (vector-set! ribcage 1 x)))
+            (set-ribcage-marks! (lambda (ribcage x) (vector-set! ribcage 2 x)))
+            (set-ribcage-labels! (lambda (ribcage x) (vector-set! ribcage 3 x)))
+            (empty-wrap '(()))
+            (top-wrap '((top)))
+            (the-anti-mark #f)
+            (anti-mark (lambda (w) (make-wrap (cons the-anti-mark (wrap-marks w)) (cons 'shift (wrap-subst w)))))
+            (new-mark (lambda () (gen-unique)))
+            (make-empty-ribcage (lambda () (make-ribcage '() '() '())))
             (extend-ribcage!
              (lambda (ribcage id label)
                (set-ribcage-symnames! ribcage (cons (syntax-expression id) (ribcage-symnames ribcage)))
-               (set-ribcage-marks! ribcage (cons (car (syntax-wrap id)) (ribcage-marks ribcage)))
+               (set-ribcage-marks! ribcage (cons (wrap-marks (syntax-wrap id)) (ribcage-marks ribcage)))
                (set-ribcage-labels! ribcage (cons label (ribcage-labels ribcage)))))
             (make-binding-wrap
              (lambda (ids labels w)
-               (if (null? ids)
-                   w
-                   (cons (car w)
-                         (cons (let* ((labelvec (list->vector labels)) (n (vector-length labelvec)))
-                                 (let ((symnamevec (make-vector n)) (marksvec (make-vector n)))
-                                   (let f ((ids ids) (i 0))
-                                     (if (not (null? ids))
-                                         (call-with-values
-                                          (lambda () (id-sym-name&marks (car ids) w))
-                                          (lambda (symname marks)
-                                            (vector-set! symnamevec i symname)
-                                            (vector-set! marksvec i marks)
-                                            (f (cdr ids) (+ i 1))))))
-                                   (make-ribcage symnamevec marksvec labelvec)))
-                               (cdr w))))))
+               (let* ((v ids)
+                      (fk (lambda ()
+                            (let ((fk (lambda () (error "value failed to match" v))))
+                              (if (pair? v)
+                                  (let ((vx (car v)) (vy (cdr v)))
+                                    (make-wrap
+                                     (wrap-marks w)
+                                     (cons (let* ((labelvec (list->vector labels))
+                                                  (n (vector-length labelvec))
+                                                  (symnamevec (make-vector n))
+                                                  (marksvec (make-vector n)))
+                                             (let f ((ids ids) (i 0))
+                                               (let* ((v ids)
+                                                      (fk (lambda ()
+                                                            (let ((fk (lambda () (error "value failed to match" v))))
+                                                              (if (pair? v)
+                                                                  (let ((vx (car v)) (vy (cdr v)))
+                                                                    (let* ((id vx) (ids vy))
+                                                                      (call-with-values
+                                                                       (lambda () (id-sym-name&marks id w))
+                                                                       (lambda (symname marks)
+                                                                         (vector-set! symnamevec i symname)
+                                                                         (vector-set! marksvec i marks)
+                                                                         (f ids (#{1+}# i))))))
+                                                                  (fk))))))
+                                                 (if (null? v) (make-ribcage symnamevec marksvec labelvec) (fk)))))
+                                           (wrap-subst w))))
+                                  (fk))))))
+                 (if (null? v) w (fk)))))
             (smart-append (lambda (m1 m2) (if (null? m2) m1 (append m1 m2))))
             (join-wraps
              (lambda (w1 w2)
-               (let ((m1 (car w1)) (s1 (cdr w1)))
+               (let ((m1 (wrap-marks w1)) (s1 (wrap-subst w1)))
                  (if (null? m1)
-                     (if (null? s1) w2 (cons (car w2) (smart-append s1 (cdr w2))))
-                     (cons (smart-append m1 (car w2)) (smart-append s1 (cdr w2)))))))
+                     (if (null? s1) w2 (make-wrap (wrap-marks w2) (smart-append s1 (wrap-subst w2))))
+                     (make-wrap (smart-append m1 (wrap-marks w2)) (smart-append s1 (wrap-subst w2)))))))
             (join-marks (lambda (m1 m2) (smart-append m1 m2)))
             (same-marks?
              (lambda (x y)
@@ -221,85 +349,231 @@
             (id-var-name
              (lambda (id w mod)
                (letrec* ((search
-                          (lambda (sym subst marks mod)
-                            (if (null? subst)
-                                (values #f marks)
-                                (let ((fst (car subst)))
-                                  (if (eq? fst 'shift)
-                                      (search sym (cdr subst) (cdr marks) mod)
-                                      (let ((symnames (ribcage-symnames fst)))
-                                        (if (vector? symnames)
-                                            (search-vector-rib sym subst marks symnames fst mod)
-                                            (search-list-rib sym subst marks symnames fst mod))))))))
-                         (search-list-rib
-                          (lambda (sym subst marks symnames ribcage mod)
-                            (let f ((symnames symnames)
-                                    (rlabels (ribcage-labels ribcage))
-                                    (rmarks (ribcage-marks ribcage)))
-                              (cond
-                                ((null? symnames) (search sym (cdr subst) marks mod))
-                                ((and (eq? (car symnames) sym) (same-marks? marks (car rmarks)))
-                                 (let ((n (car rlabels)))
-                                   (if (pair? n)
-                                       (if (equal? mod (car n))
-                                           (values (cdr n) marks)
-                                           (f (cdr symnames) (cdr rlabels) (cdr rmarks)))
-                                       (values n marks))))
-                                (else (f (cdr symnames) (cdr rlabels) (cdr rmarks)))))))
-                         (search-vector-rib
-                          (lambda (sym subst marks symnames ribcage mod)
-                            (let ((n (vector-length symnames)))
-                              (let f ((i 0))
-                                (cond
-                                  ((= i n) (search sym (cdr subst) marks mod))
-                                  ((and (eq? (vector-ref symnames i) sym)
-                                        (same-marks? marks (vector-ref (ribcage-marks ribcage) i)))
-                                   (let ((n (vector-ref (ribcage-labels ribcage) i)))
-                                     (if (pair? n)
-                                         (if (equal? mod (car n)) (values (cdr n) marks) (f (+ i 1)))
-                                         (values n marks))))
-                                  (else (f (+ i 1)))))))))
+                          (lambda (sym subst marks)
+                            (let* ((v subst)
+                                   (fk (lambda ()
+                                         (let ((fk (lambda ()
+                                                     (let ((fk (lambda () (error "value failed to match" v))))
+                                                       (if (pair? v)
+                                                           (let ((vx (car v)) (vy (cdr v)))
+                                                             (if (and (vector? vx)
+                                                                      (eq? (vector-length vx)
+                                                                           (length '('ribcage rsymnames rmarks rlabels))))
+                                                                 (if (eq? (vector-ref vx 0) 'ribcage)
+                                                                     (let* ((rsymnames (vector-ref vx (#{1+}# 0)))
+                                                                            (rmarks (vector-ref vx (#{1+}# (#{1+}# 0))))
+                                                                            (rlabels
+                                                                             (vector-ref
+                                                                              vx
+                                                                              (#{1+}# (#{1+}# (#{1+}# 0)))))
+                                                                            (subst vy))
+                                                                       (letrec* ((search-list-rib
+                                                                                  (lambda ()
+                                                                                    (let lp ((rsymnames rsymnames)
+                                                                                             (rmarks rmarks)
+                                                                                             (rlabels rlabels))
+                                                                                      (let* ((v rsymnames)
+                                                                                             (fk (lambda ()
+                                                                                                   (let ((fk (lambda ()
+                                                                                                               (error "value failed to match"
+                                                                                                                      v))))
+                                                                                                     (if (pair? v)
+                                                                                                         (let ((vx (car v))
+                                                                                                               (vy (cdr v)))
+                                                                                                           (let* ((rsym vx)
+                                                                                                                  (rsymnames
+                                                                                                                   vy)
+                                                                                                                  (v rmarks)
+                                                                                                                  (fk (lambda ()
+                                                                                                                        (error "value failed to match"
+                                                                                                                               v))))
+                                                                                                             (if (pair? v)
+                                                                                                                 (let ((vx (car v))
+                                                                                                                       (vy (cdr v)))
+                                                                                                                   (let* ((rmarks1
+                                                                                                                           vx)
+                                                                                                                          (rmarks
+                                                                                                                           vy)
+                                                                                                                          (v rlabels)
+                                                                                                                          (fk (lambda ()
+                                                                                                                                (error "value failed to match"
+                                                                                                                                       v))))
+                                                                                                                     (if (pair? v)
+                                                                                                                         (let ((vx (car v))
+                                                                                                                               (vy (cdr v)))
+                                                                                                                           (let* ((label vx)
+                                                                                                                                  (rlabels
+                                                                                                                                   vy))
+                                                                                                                             (if (and (eq? sym
+                                                                                                                                           rsym)
+                                                                                                                                      (same-marks?
+                                                                                                                                       marks
+                                                                                                                                       rmarks1))
+                                                                                                                                 (let* ((v label)
+                                                                                                                                        (fk (lambda ()
+                                                                                                                                              (let ((fk (lambda ()
+                                                                                                                                                          (error "value failed to match"
+                                                                                                                                                                 v))))
+                                                                                                                                                label))))
+                                                                                                                                   (if (pair? v)
+                                                                                                                                       (let ((vx (car v))
+                                                                                                                                             (vy (cdr v)))
+                                                                                                                                         (let* ((mod* vx)
+                                                                                                                                                (label vy))
+                                                                                                                                           (if (equal?
+                                                                                                                                                mod*
+                                                                                                                                                mod)
+                                                                                                                                               label
+                                                                                                                                               (lp rsymnames
+                                                                                                                                                   rmarks
+                                                                                                                                                   rlabels))))
+                                                                                                                                       (fk)))
+                                                                                                                                 (lp rsymnames
+                                                                                                                                     rmarks
+                                                                                                                                     rlabels))))
+                                                                                                                         (fk))))
+                                                                                                                 (fk))))
+                                                                                                         (fk))))))
+                                                                                        (if (null? v)
+                                                                                            (search sym subst marks)
+                                                                                            (fk))))))
+                                                                                 (search-vector-rib
+                                                                                  (lambda ()
+                                                                                    (let ((n (vector-length rsymnames)))
+                                                                                      (let lp ((i 0))
+                                                                                        (cond
+                                                                                          ((= i n)
+                                                                                           (search sym subst marks))
+                                                                                          ((and (eq? (vector-ref
+                                                                                                      rsymnames
+                                                                                                      i)
+                                                                                                     sym)
+                                                                                                (same-marks?
+                                                                                                 marks
+                                                                                                 (vector-ref rmarks i)))
+                                                                                           (let* ((v (vector-ref
+                                                                                                      rlabels
+                                                                                                      i))
+                                                                                                  (fk (lambda ()
+                                                                                                        (let* ((fk (lambda ()
+                                                                                                                     (error "value failed to match"
+                                                                                                                            v)))
+                                                                                                               (label v))
+                                                                                                          label))))
+                                                                                             (if (pair? v)
+                                                                                                 (let ((vx (car v))
+                                                                                                       (vy (cdr v)))
+                                                                                                   (let* ((mod* vx)
+                                                                                                          (label vy))
+                                                                                                     (if (equal?
+                                                                                                          mod*
+                                                                                                          mod)
+                                                                                                         label
+                                                                                                         (lp (#{1+}# i)))))
+                                                                                                 (fk))))
+                                                                                          (else (lp (#{1+}# i)))))))))
+                                                                         (if (vector? rsymnames)
+                                                                             (search-vector-rib)
+                                                                             (search-list-rib))))
+                                                                     (fk))
+                                                                 (fk)))
+                                                           (fk))))))
+                                           (if (pair? v)
+                                               (let ((vx (car v)) (vy (cdr v)))
+                                                 (if (eq? vx 'shift)
+                                                     (let* ((subst vy)
+                                                            (v marks)
+                                                            (fk (lambda () (error "value failed to match" v))))
+                                                       (if (pair? v)
+                                                           (let ((vx (car v)) (vy (cdr v)))
+                                                             (let ((marks vy)) (search sym subst marks)))
+                                                           (fk)))
+                                                     (fk)))
+                                               (fk))))))
+                              (if (null? v) #f (fk))))))
                  (cond
-                   ((symbol? id) (or (search id (cdr w) (car w) mod) id))
+                   ((symbol? id) (or (search id (wrap-subst w) (wrap-marks w)) id))
                    ((syntax? id)
                     (let ((id (syntax-expression id)) (w1 (syntax-wrap id)) (mod (or (syntax-module id) mod)))
-                      (let ((marks (join-marks (car w) (car w1))))
-                        (call-with-values
-                         (lambda () (search id (cdr w) marks mod))
-                         (lambda (new-id marks) (or new-id (search id (cdr w1) marks mod) id))))))
+                      (let ((marks (join-marks (wrap-marks w) (wrap-marks w1))))
+                        (or (search id (wrap-subst w) marks) (search id (wrap-subst w1) marks) id))))
                    (else (syntax-violation 'id-var-name "invalid id" id))))))
             (locally-bound-identifiers
              (lambda (w mod)
-               (letrec* ((scan (lambda (subst results)
-                                 (if (null? subst)
-                                     results
-                                     (let ((fst (car subst)))
-                                       (if (eq? fst 'shift)
-                                           (scan (cdr subst) results)
-                                           (let ((symnames (ribcage-symnames fst)) (marks (ribcage-marks fst)))
-                                             (if (vector? symnames)
-                                                 (scan-vector-rib subst symnames marks results)
-                                                 (scan-list-rib subst symnames marks results))))))))
-                         (scan-list-rib
-                          (lambda (subst symnames marks results)
-                            (let f ((symnames symnames) (marks marks) (results results))
-                              (if (null? symnames)
-                                  (scan (cdr subst) results)
-                                  (f (cdr symnames)
-                                     (cdr marks)
-                                     (cons (wrap (car symnames) (anti-mark (cons (car marks) subst)) mod) results))))))
-                         (scan-vector-rib
-                          (lambda (subst symnames marks results)
-                            (let ((n (vector-length symnames)))
-                              (let f ((i 0) (results results))
-                                (if (= i n)
-                                    (scan (cdr subst) results)
-                                    (f (+ i 1)
-                                       (cons (wrap (vector-ref symnames i)
-                                                   (anti-mark (cons (vector-ref marks i) subst))
-                                                   mod)
-                                             results))))))))
-                 (scan (cdr w) '()))))
+               (let scan ((subst (wrap-subst w)) (results '()))
+                 (let* ((v subst)
+                        (fk (lambda ()
+                              (let ((fk (lambda ()
+                                          (let ((fk (lambda () (error "value failed to match" v))))
+                                            (if (pair? v)
+                                                (let ((vx (car v)) (vy (cdr v)))
+                                                  (if (and (vector? vx)
+                                                           (eq? (vector-length vx)
+                                                                (length '('ribcage symnames marks labels))))
+                                                      (if (eq? (vector-ref vx 0) 'ribcage)
+                                                          (let* ((symnames (vector-ref vx (#{1+}# 0)))
+                                                                 (marks (vector-ref vx (#{1+}# (#{1+}# 0))))
+                                                                 (labels (vector-ref vx (#{1+}# (#{1+}# (#{1+}# 0)))))
+                                                                 (subst* vy))
+                                                            (letrec* ((scan-list-rib
+                                                                       (lambda ()
+                                                                         (let lp ((symnames symnames)
+                                                                                  (marks marks)
+                                                                                  (results results))
+                                                                           (let* ((v symnames)
+                                                                                  (fk (lambda ()
+                                                                                        (let ((fk (lambda ()
+                                                                                                    (error "value failed to match"
+                                                                                                           v))))
+                                                                                          (if (pair? v)
+                                                                                              (let ((vx (car v))
+                                                                                                    (vy (cdr v)))
+                                                                                                (let* ((sym vx)
+                                                                                                       (symnames vy)
+                                                                                                       (v marks)
+                                                                                                       (fk (lambda ()
+                                                                                                             (error "value failed to match"
+                                                                                                                    v))))
+                                                                                                  (if (pair? v)
+                                                                                                      (let ((vx (car v))
+                                                                                                            (vy (cdr v)))
+                                                                                                        (let* ((m vx)
+                                                                                                               (marks vy))
+                                                                                                          (lp symnames
+                                                                                                              marks
+                                                                                                              (cons (wrap sym
+                                                                                                                          (anti-mark
+                                                                                                                           (make-wrap
+                                                                                                                            m
+                                                                                                                            subst))
+                                                                                                                          mod)
+                                                                                                                    results))))
+                                                                                                      (fk))))
+                                                                                              (fk))))))
+                                                                             (if (null? v) (scan subst* results) (fk))))))
+                                                                      (scan-vector-rib
+                                                                       (lambda ()
+                                                                         (let ((n (vector-length symnames)))
+                                                                           (let lp ((i 0) (results results))
+                                                                             (if (= i n)
+                                                                                 (scan subst* results)
+                                                                                 (lp (#{1+}# i)
+                                                                                     (let ((sym (vector-ref symnames i))
+                                                                                           (m (vector-ref marks i)))
+                                                                                       (cons (wrap sym
+                                                                                                   (anti-mark
+                                                                                                    (make-wrap m subst))
+                                                                                                   mod)
+                                                                                             results)))))))))
+                                                              (if (vector? symnames) (scan-vector-rib) (scan-list-rib))))
+                                                          (fk))
+                                                      (fk)))
+                                                (fk))))))
+                                (if (pair? v)
+                                    (let ((vx (car v)) (vy (cdr v)))
+                                      (if (eq? vx 'shift) (let ((subst vy)) (scan subst results)) (fk)))
+                                    (fk))))))
+                   (if (null? v) results (fk))))))
             (resolve-identifier
              (lambda (id w r mod resolve-syntax-parameters?)
                (letrec* ((resolve-global
@@ -316,7 +590,7 @@
                                     (if (eq? type 'syntax-parameter)
                                         (if resolve-syntax-parameters?
                                             (let ((lexical (assq-ref r v)))
-                                              (values 'macro (if lexical (cdr lexical) trans) mod))
+                                              (values 'macro (if lexical (binding-value lexical) trans) mod))
                                             (values type v mod))
                                         (values type trans mod)))
                                   (values 'global var mod)))))
@@ -324,7 +598,7 @@
                           (lambda (label mod)
                             (let ((b (assq-ref r label)))
                               (if b
-                                  (let ((type (car b)) (value (cdr b)))
+                                  (let ((type (binding-type b)) (value (binding-value b)))
                                     (if (eq? type 'syntax-parameter)
                                         (if resolve-syntax-parameters?
                                             (values 'macro value mod)
@@ -343,8 +617,7 @@
                            (or (syntax-module n) mod)
                            resolve-syntax-parameters?)))
                      ((symbol? n) (resolve-global n (or (and (syntax? id) (syntax-module id)) mod)))
-                     ((string? n) (resolve-lexical n (or (and (syntax? id) (syntax-module id)) mod)))
-                     (else (error "unexpected id-var-name" id w n)))))))
+                     (else (resolve-lexical n (or (and (syntax? id) (syntax-module id)) mod))))))))
             (transformer-environment
              (make-fluid (lambda (k) (error "called outside the dynamic extent of a syntax transformer"))))
             (with-transformer-environment (lambda (k) ((fluid-ref transformer-environment) k)))
@@ -352,18 +625,16 @@
              (lambda (i j)
                (let* ((mi (and (syntax? i) (syntax-module i)))
                       (mj (and (syntax? j) (syntax-module j)))
-                      (ni (id-var-name i '(()) mi))
-                      (nj (id-var-name j '(()) mj)))
+                      (ni (id-var-name i empty-wrap mi))
+                      (nj (id-var-name j empty-wrap mj)))
                  (letrec* ((id-module-binding
                             (lambda (id mod)
-                              (module-variable
-                               (if mod (resolve-module (cdr mod)) (current-module))
-                               (let ((x id)) (if (syntax? x) (syntax-expression x) x))))))
+                              (module-variable (if mod (resolve-module (cdr mod)) (current-module)) (id-sym-name id)))))
                    (cond
                      ((syntax? ni) (free-id=? ni j))
                      ((syntax? nj) (free-id=? i nj))
                      ((symbol? ni)
-                      (and (eq? nj (let ((x j)) (if (syntax? x) (syntax-expression x) x)))
+                      (and (eq? nj (id-sym-name j))
                            (let ((bi (id-module-binding i mi)))
                              (if bi (eq? bi (id-module-binding j mj)) (and (not (id-module-binding j mj)) (eq? ni nj))))
                            (eq? (id-module-binding i mi) (id-module-binding j mj))))
@@ -372,18 +643,41 @@
              (lambda (i j)
                (if (and (syntax? i) (syntax? j))
                    (and (eq? (syntax-expression i) (syntax-expression j))
-                        (same-marks? (car (syntax-wrap i)) (car (syntax-wrap j))))
+                        (same-marks? (wrap-marks (syntax-wrap i)) (wrap-marks (syntax-wrap j))))
                    (eq? i j))))
             (valid-bound-ids?
              (lambda (ids)
-               (and (let all-ids? ((ids ids)) (or (null? ids) (and (id? (car ids)) (all-ids? (cdr ids)))))
+               (and (let all-ids? ((ids ids))
+                      (let* ((v ids)
+                             (fk (lambda ()
+                                   (let ((fk (lambda () (error "value failed to match" v))))
+                                     (if (pair? v)
+                                         (let ((vx (car v)) (vy (cdr v)))
+                                           (let* ((id vx) (ids vy)) (and (id? id) (all-ids? ids))))
+                                         (fk))))))
+                        (if (null? v) #t (fk))))
                     (distinct-bound-ids? ids))))
             (distinct-bound-ids?
              (lambda (ids)
                (let distinct? ((ids ids))
-                 (or (null? ids) (and (not (bound-id-member? (car ids) (cdr ids))) (distinct? (cdr ids)))))))
+                 (let* ((v ids)
+                        (fk (lambda ()
+                              (let ((fk (lambda () (error "value failed to match" v))))
+                                (if (pair? v)
+                                    (let ((vx (car v)) (vy (cdr v)))
+                                      (let* ((id vx) (ids vy)) (and (not (bound-id-member? id ids)) (distinct? ids))))
+                                    (fk))))))
+                   (if (null? v) #t (fk))))))
             (bound-id-member?
-             (lambda (x list) (and (not (null? list)) (or (bound-id=? x (car list)) (bound-id-member? x (cdr list))))))
+             (lambda (x ids)
+               (let* ((v ids)
+                      (fk (lambda ()
+                            (let ((fk (lambda () (error "value failed to match" v))))
+                              (if (pair? v)
+                                  (let ((vx (car v)) (vy (cdr v)))
+                                    (let* ((id vx) (ids vy)) (or (bound-id=? x id) (bound-id-member? x ids))))
+                                  (fk))))))
+                 (if (null? v) #f (fk)))))
             (wrap (lambda (x w defmod) (source-wrap x w #f defmod)))
             (wrap-syntax
              (lambda (x w defmod)
@@ -391,7 +685,7 @@
             (source-wrap
              (lambda (x w s defmod)
                (cond
-                 ((and (null? (car w)) (null? (cdr w)) (not defmod) (not s)) x)
+                 ((and (null? (wrap-marks w)) (null? (wrap-subst w)) (not defmod) (not s)) x)
                  ((syntax? x) (wrap-syntax x (join-wraps w (syntax-wrap x)) defmod))
                  ((null? x) x)
                  (else (make-syntax x w defmod s)))))
@@ -399,28 +693,44 @@
              (lambda (body r w s mod)
                (build-sequence
                 s
-                (let dobody ((body body) (r r) (w w) (mod mod))
-                  (if (null? body)
-                      '()
-                      (let ((first (expand (car body) r w mod))) (cons first (dobody (cdr body) r w mod))))))))
+                (let lp ((body body))
+                  (let* ((v body)
+                         (fk (lambda ()
+                               (let ((fk (lambda () (error "value failed to match" v))))
+                                 (if (pair? v)
+                                     (let ((vx (car v)) (vy (cdr v)))
+                                       (let* ((head vx) (tail vy) (expr (expand head r w mod))) (cons expr (lp tail))))
+                                     (fk))))))
+                    (if (null? v) '() (fk)))))))
             (expand-top-sequence
              (lambda (body r w s m esew mod)
                (let* ((r (cons '("placeholder" placeholder) r))
-                      (ribcage (make-ribcage '() '() '()))
-                      (w (cons (car w) (cons ribcage (cdr w)))))
+                      (ribcage (make-empty-ribcage))
+                      (w (make-wrap (wrap-marks w) (cons ribcage (wrap-subst w)))))
                  (letrec* ((record-definition!
                             (lambda (id var)
                               (let ((mod (cons 'hygiene (module-name (current-module)))))
-                                (extend-ribcage! ribcage id (cons (or (syntax-module id) mod) (wrap var '((top)) mod))))))
-                           (macro-introduced-identifier? (lambda (id) (not (equal? (car (syntax-wrap id)) '(top)))))
+                                (extend-ribcage! ribcage id (cons (or (syntax-module id) mod) (wrap var top-wrap mod))))))
+                           (macro-introduced-identifier?
+                            (lambda (id) (not (equal? (wrap-marks (syntax-wrap id)) '(top)))))
                            (ensure-fresh-name
                             (lambda (var)
                               (letrec* ((ribcage-has-var?
                                          (lambda (var)
                                            (let lp ((labels (ribcage-labels ribcage)))
-                                             (and (pair? labels)
-                                                  (let ((wrapped (cdar labels)))
-                                                    (or (eq? (syntax-expression wrapped) var) (lp (cdr labels)))))))))
+                                             (let* ((v labels)
+                                                    (fk (lambda ()
+                                                          (let ((fk (lambda () (error "value failed to match" v))))
+                                                            (if (pair? v)
+                                                                (let ((vx (car v)) (vy-1 (cdr v)))
+                                                                  (if (pair? vx)
+                                                                      (let ((vx (car vx)) (vy (cdr vx)))
+                                                                        (let* ((wrapped vy) (labels vy-1))
+                                                                          (or (eq? (syntax-expression wrapped) var)
+                                                                              (lp labels))))
+                                                                      (fk)))
+                                                                (fk))))))
+                                               (if (null? v) #f (fk)))))))
                                 (let lp ((unique var) (n 1))
                                   (if (ribcage-has-var? unique)
                                       (let ((tail (string->symbol (number->string n))))
@@ -435,18 +745,31 @@
                                 (string->symbol
                                  (number->string (hash (syntax->datum orig-form) most-positive-fixnum) 16))))))
                            (parse (lambda (body r w s m esew mod)
-                                    (let lp ((body body) (exps '()))
-                                      (if (null? body)
-                                          exps
-                                          (lp (cdr body) (append (parse1 (car body) r w s m esew mod) exps))))))
+                                    (let lp ((body body))
+                                      (let* ((v body)
+                                             (fk (lambda ()
+                                                   (let ((fk (lambda () (error "value failed to match" v))))
+                                                     (if (pair? v)
+                                                         (let ((vx (car v)) (vy (cdr v)))
+                                                           (let* ((head vx)
+                                                                  (tail vy)
+                                                                  (thunks (parse1 head r w s m esew mod)))
+                                                             (append thunks (lp tail))))
+                                                         (fk))))))
+                                        (if (null? v) '() (fk))))))
                            (parse1
                             (lambda (x r w s m esew mod)
                               (letrec* ((current-module-for-expansion
                                          (lambda (mod)
-                                           (let ((key (car mod)))
-                                             (if (memv key '(hygiene))
-                                                 (cons 'hygiene (module-name (current-module)))
-                                                 mod)))))
+                                           (let* ((v mod)
+                                                  (fk (lambda ()
+                                                        (let ((fk (lambda () (error "value failed to match" v)))) mod))))
+                                             (if (pair? v)
+                                                 (let ((vx (car v)) (vy (cdr v)))
+                                                   (if (eq? vx 'hygiene)
+                                                       (cons 'hygiene (module-name (current-module)))
+                                                       (fk)))
+                                                 (fk))))))
                                 (call-with-values
                                  (lambda ()
                                    (let ((mod (current-module-for-expansion mod)))
@@ -456,27 +779,25 @@
                                      (cond
                                        ((memv key '(define-form))
                                         (let* ((id (wrap value w mod))
-                                               (label (gen-label))
                                                (var (if (macro-introduced-identifier? id)
                                                         (fresh-derived-name id x)
                                                         (syntax-expression id))))
                                           (record-definition! id var)
                                           (list (if (eq? m 'c&e)
                                                     (let ((x (build-global-definition s mod var (expand e r w mod))))
-                                                      (top-level-eval-hook x mod)
+                                                      (top-level-eval x mod)
                                                       (lambda () x))
                                                     (call-with-values
-                                                     (lambda () (resolve-identifier id '(()) r mod #t))
+                                                     (lambda () (resolve-identifier id empty-wrap r mod #t))
                                                      (lambda (type* value* mod*)
                                                        (if (eq? type* 'macro)
-                                                           (top-level-eval-hook
+                                                           (top-level-eval
                                                             (build-global-definition s mod var (build-void s))
                                                             mod))
                                                        (lambda ()
                                                          (build-global-definition s mod var (expand e r w mod)))))))))
                                        ((memv key '(define-syntax-form define-syntax-parameter-form))
                                         (let* ((id (wrap value w mod))
-                                               (label (gen-label))
                                                (var (if (macro-introduced-identifier? id)
                                                         (fresh-derived-name id x)
                                                         (syntax-expression id))))
@@ -487,7 +808,7 @@
                                                (cond
                                                  ((memq 'compile esew)
                                                   (let ((e (expand-install-global mod var type (expand e r w mod))))
-                                                    (top-level-eval-hook e mod)
+                                                    (top-level-eval e mod)
                                                     (if (memq 'load esew) (list (lambda () e)) '())))
                                                  ((memq 'load esew)
                                                   (list (lambda ()
@@ -495,10 +816,10 @@
                                                  (else '())))
                                               ((memv key '(c&e))
                                                (let ((e (expand-install-global mod var type (expand e r w mod))))
-                                                 (top-level-eval-hook e mod)
+                                                 (top-level-eval e mod)
                                                  (list (lambda () e))))
                                               (else (if (memq 'eval esew)
-                                                        (top-level-eval-hook
+                                                        (top-level-eval
                                                          (expand-install-global mod var type (expand e r w mod))
                                                          mod))
                                                     '())))))
@@ -534,7 +855,7 @@
                                                                    '(eval))
                                                                   (begin
                                                                     (if (memq 'expand when-list)
-                                                                        (top-level-eval-hook
+                                                                        (top-level-eval
                                                                          (expand-top-sequence body r w s 'e '(eval) mod)
                                                                          mod))
                                                                     '())))
@@ -549,7 +870,7 @@
                                                              ((or (memq 'compile when-list)
                                                                   (memq 'expand when-list)
                                                                   (and (eq? m 'c&e) (memq 'eval when-list)))
-                                                              (top-level-eval-hook
+                                                              (top-level-eval
                                                                (expand-top-sequence body r w s 'e '(eval) mod)
                                                                mod)
                                                               '())
@@ -561,31 +882,61 @@
                                                tmp-1))))
                                        (else (list (if (eq? m 'c&e)
                                                        (let ((x (expand-expr type value form e r w s mod)))
-                                                         (top-level-eval-hook x mod)
+                                                         (top-level-eval x mod)
                                                          (lambda () x))
                                                        (lambda () (expand-expr type value form e r w s mod)))))))))))))
-                   (let ((exps (map (lambda (x) (x)) (reverse (parse body r w s m esew mod)))))
-                     (if (null? exps) (build-void s) (build-sequence s exps)))))))
+                   (let* ((v (let lp ((thunks (parse body r w s m esew mod)))
+                               (let* ((v thunks)
+                                      (fk (lambda ()
+                                            (let ((fk (lambda () (error "value failed to match" v))))
+                                              (if (pair? v)
+                                                  (let ((vx (car v)) (vy (cdr v)))
+                                                    (let* ((thunk vx) (thunks vy)) (cons (thunk) (lp thunks))))
+                                                  (fk))))))
+                                 (if (null? v) '() (fk)))))
+                          (fk (lambda ()
+                                (let* ((fk (lambda () (error "value failed to match" v))) (exps v))
+                                  (build-sequence s exps)))))
+                     (if (null? v) (build-void s) (fk)))))))
             (expand-install-global
              (lambda (mod name type e)
                (build-global-definition
-                #f
+                no-source
                 mod
                 name
                 (build-primcall
-                 #f
+                 no-source
                  'make-syntax-transformer
-                 (list (build-data #f name)
-                       (build-data #f (if (eq? type 'define-syntax-parameter-form) 'syntax-parameter 'macro))
+                 (list (build-data no-source name)
+                       (build-data no-source (if (eq? type 'define-syntax-parameter-form) 'syntax-parameter 'macro))
                        e)))))
             (parse-when-list
              (lambda (e when-list)
                (let ((result (strip when-list)))
                  (let lp ((l result))
-                   (cond
-                     ((null? l) result)
-                     ((memq (car l) '(compile load eval expand)) (lp (cdr l)))
-                     (else (syntax-violation 'eval-when "invalid situation" e (car l))))))))
+                   (let* ((v l)
+                          (fk (lambda ()
+                                (let ((fk (lambda () (error "value failed to match" v))))
+                                  (if (pair? v)
+                                      (let ((vx (car v)) (vy (cdr v)))
+                                        (let* ((x vx)
+                                               (l vy)
+                                               (v x)
+                                               (fk (lambda ()
+                                                     (let ((fk (lambda () (error "value failed to match" v))))
+                                                       (syntax-violation 'eval-when "invalid situation" e x))))
+                                               (tk (lambda () (lp l))))
+                                          (if (eq? v 'compile)
+                                              (tk)
+                                              (let ((tk (lambda () (tk))))
+                                                (if (eq? v 'load)
+                                                    (tk)
+                                                    (let ((tk (lambda () (tk))))
+                                                      (if (eq? v 'eval)
+                                                          (tk)
+                                                          (let ((tk (lambda () (tk)))) (if (eq? v 'expand) (tk) (fk))))))))))
+                                      (fk))))))
+                     (if (null? v) result (fk)))))))
             (syntax-type
              (lambda (e r w s rib mod for-car?)
                (cond
@@ -598,7 +949,7 @@
                          ((memv key '(macro))
                           (if for-car?
                               (values type value e e w s mod)
-                              (syntax-type (expand-macro value e r w s rib mod) r '(()) s rib mod #f)))
+                              (syntax-type (expand-macro value e r w s rib mod) r empty-wrap s rib mod #f)))
                          ((memv key '(global)) (values type value e value w s mod*))
                          (else (values type value e e w s mod)))))))
                  ((pair? e)
@@ -614,7 +965,7 @@
                                 (values 'primitive-call fval e e w s mod)
                                 (values 'global-call (make-syntax fval w fmod fs) e e w s mod)))
                            ((memv key '(macro))
-                            (syntax-type (expand-macro fval e r w s rib mod) r '(()) s rib mod for-car?))
+                            (syntax-type (expand-macro fval e r w s rib mod) r empty-wrap s rib mod for-car?))
                            ((memv key '(module-ref))
                             (call-with-values
                              (lambda () (fval e r w mod))
@@ -640,10 +991,10 @@
                                                   (source-wrap
                                                    (cons (make-syntax 'lambda '((top)) '(hygiene guile))
                                                          (wrap (cons args (cons e1 e2)) w mod))
-                                                   '(())
+                                                   empty-wrap
                                                    s
                                                    #f)
-                                                  '(())
+                                                  empty-wrap
                                                   s
                                                   mod))
                                                tmp-1)
@@ -655,7 +1006,7 @@
                                                         (wrap name w mod)
                                                         (wrap e w mod)
                                                         (list (make-syntax 'if '((top)) '(hygiene guile)) #f #f)
-                                                        '(())
+                                                        empty-wrap
                                                         s
                                                         mod))
                                                      tmp-1)
@@ -692,18 +1043,14 @@
              (lambda (type value form e r w s mod)
                (let ((key type))
                  (cond
-                   ((memv key '(lexical)) (build-lexical-reference 'value s e value))
+                   ((memv key '(lexical)) (build-lexical-reference s e value))
                    ((memv key '(core core-form)) (value e r w s mod))
                    ((memv key '(module-ref))
                     (call-with-values (lambda () (value e r w mod)) (lambda (e r w s mod) (expand e r w mod))))
                    ((memv key '(lexical-call))
                     (expand-call
                      (let ((id (car e)))
-                       (build-lexical-reference
-                        'fun
-                        (source-annotation id)
-                        (if (syntax? id) (syntax->datum id) id)
-                        value))
+                       (build-lexical-reference (source-annotation id) (if (syntax? id) (syntax->datum id) id) value))
                      e
                      r
                      w
@@ -765,21 +1112,31 @@
                      (syntax-violation #f "source expression failed to match any pattern" tmp-1)))))
             (expand-macro
              (lambda (p e r w s rib mod)
-               (letrec* ((decorate-source (lambda (x) (source-wrap x '(()) s #f)))
+               (letrec* ((decorate-source (lambda (x) (source-wrap x empty-wrap s #f)))
                          (map* (lambda (f x)
-                                 (cond ((null? x) x) ((pair? x) (cons (f (car x)) (map* f (cdr x)))) (else (f x)))))
+                                 (let* ((v x)
+                                        (fk (lambda ()
+                                              (let ((fk (lambda ()
+                                                          (let* ((fk (lambda () (error "value failed to match" v)))
+                                                                 (x v))
+                                                            (f x)))))
+                                                (if (pair? v)
+                                                    (let ((vx (car v)) (vy (cdr v)))
+                                                      (let* ((x vx) (x* vy)) (cons (f x) (map* f x*))))
+                                                    (fk))))))
+                                   (if (null? v) '() (fk)))))
                          (rebuild-macro-output
                           (lambda (x m)
                             (cond
                               ((pair? x) (decorate-source (map* (lambda (x) (rebuild-macro-output x m)) x)))
                               ((syntax? x)
                                (let ((w (syntax-wrap x)))
-                                 (let ((ms (car w)) (ss (cdr w)))
-                                   (if (and (pair? ms) (eq? (car ms) #f))
-                                       (wrap-syntax x (cons (cdr ms) (if rib (cons rib (cdr ss)) (cdr ss))) mod)
+                                 (let ((ms (wrap-marks w)) (ss (wrap-subst w)))
+                                   (if (and (pair? ms) (eq? (car ms) the-anti-mark))
+                                       (wrap-syntax x (make-wrap (cdr ms) (if rib (cons rib (cdr ss)) (cdr ss))) mod)
                                        (wrap-syntax
                                         x
-                                        (cons (cons m ms) (if rib (cons rib (cons 'shift ss)) (cons 'shift ss)))
+                                        (make-wrap (cons m ms) (if rib (cons rib (cons 'shift ss)) (cons 'shift ss)))
                                         mod)))))
                               ((vector? x)
                                (let* ((n (vector-length x)) (v (make-vector n)))
@@ -788,26 +1145,26 @@
                                        (begin (if #f #f) v)
                                        (begin
                                          (vector-set! v i (rebuild-macro-output (vector-ref x i) m))
-                                         (loop (+ i 1)))))
+                                         (loop (#{1+}# i)))))
                                  (decorate-source v)))
                               ((symbol? x)
                                (syntax-violation
                                 #f
                                 "encountered raw symbol in macro output"
-                                (source-wrap e w (cdr w) mod)
+                                (source-wrap e w (wrap-subst w) mod)
                                 x))
                               (else (decorate-source x))))))
-                 (let* ((t-680b775fb37a463-df9 transformer-environment)
-                        (t-680b775fb37a463-dfa (lambda (k) (k e r w s rib mod))))
+                 (let* ((t-680b775fb37a463-10a5 transformer-environment)
+                        (t-680b775fb37a463-10a6 (lambda (k) (k e r w s rib mod))))
                    (with-fluid*
-                    t-680b775fb37a463-df9
-                    t-680b775fb37a463-dfa
-                    (lambda () (rebuild-macro-output (p (source-wrap e (anti-mark w) s mod)) (module-gensym "m"))))))))
+                    t-680b775fb37a463-10a5
+                    t-680b775fb37a463-10a6
+                    (lambda () (rebuild-macro-output (p (source-wrap e (anti-mark w) s mod)) (new-mark))))))))
             (expand-body
              (lambda (body outer-form r w mod)
                (let* ((r (cons '("placeholder" placeholder) r))
-                      (ribcage (make-ribcage '() '() '()))
-                      (w (cons (car w) (cons ribcage (cdr w)))))
+                      (ribcage (make-empty-ribcage))
+                      (w (make-wrap (wrap-marks w) (cons ribcage (wrap-subst w)))))
                  (let parse ((body (map (lambda (x) (cons r (wrap x w mod))) body))
                              (ids '())
                              (labels '())
@@ -832,7 +1189,7 @@
                             ((not (car var-ids))
                              (lp (cdr var-ids) (cdr vars) (cdr vals) (make-seq src ((car vals)) tail)))
                             (else (let ((var-ids (map (lambda (id) (if id (syntax->datum id) '_)) (reverse var-ids)))
-                                        (vars (map (lambda (var) (or var (gen-label))) (reverse vars)))
+                                        (vars (map (lambda (var) (or var (gen-lexical '_))) (reverse vars)))
                                         (vals (map (lambda (expand-expr id)
                                                      (if id (expand-expr) (make-seq src (expand-expr) (build-void src))))
                                                    (reverse vals)
@@ -842,7 +1199,7 @@
                       (parse body ids labels (cons #f var-ids) (cons #f vars) (cons expand-tail-expr vals) bindings #f))
                      (else (let ((e (cdar body)) (er (caar body)) (body (cdr body)))
                              (call-with-values
-                              (lambda () (syntax-type e er '(()) (source-annotation e) ribcage mod #f))
+                              (lambda () (syntax-type e er empty-wrap (source-annotation e) ribcage mod #f))
                               (lambda (type value form e w s mod)
                                 (let ((key type))
                                   (cond
@@ -856,7 +1213,7 @@
                                                 (cons id var-ids)
                                                 (cons var vars)
                                                 (cons (let ((wrapped (source-wrap e w s mod)))
-                                                        (lambda () (expand wrapped er '(()) mod)))
+                                                        (lambda () (expand wrapped er empty-wrap mod)))
                                                       vals)
                                                 (cons (cons 'lexical var) bindings)
                                                 #f))))
@@ -927,7 +1284,7 @@
                                                    vars
                                                    vals
                                                    bindings
-                                                   (lambda () (expand wrapped er '(()) mod))))))))))))))))
+                                                   (lambda () (expand wrapped er empty-wrap mod))))))))))))))))
             (expand-local-syntax
              (lambda (rec? e r w s mod k)
                (let* ((tmp e) (tmp ($sc-dispatch tmp '(_ #(each (any any)) any . each-any))))
@@ -952,9 +1309,10 @@
                      (syntax-violation #f "bad local syntax definition" (source-wrap e w s mod))))))
             (eval-local-transformer
              (lambda (expanded mod)
-               (let ((p (local-eval-hook expanded mod)))
-                 (if (procedure? p) p (syntax-violation #f "nonprocedure transformer" p)))))
-            (expand-void (lambda () (build-void #f)))
+               (let ((p (local-eval expanded mod)))
+                 (if (not (procedure? p)) (syntax-violation #f "nonprocedure transformer" p))
+                 p)))
+            (expand-void (lambda () (build-void no-source)))
             (ellipsis?
              (lambda (e r mod)
                (and (nonsymbol-id? e)
@@ -962,7 +1320,7 @@
                      (lambda ()
                        (resolve-identifier
                         (make-syntax '#{ $sc-ellipsis }# (syntax-wrap e) (or (syntax-module e) mod) #f)
-                        '(())
+                        empty-wrap
                         r
                         mod
                         #f))
@@ -1331,11 +1689,11 @@
                                                 s
                                                 mod
                                                 get-formals
-                                                (map (lambda (tmp-680b775fb37a463-2
-                                                              tmp-680b775fb37a463-1
-                                                              tmp-680b775fb37a463)
-                                                       (cons tmp-680b775fb37a463
-                                                             (cons tmp-680b775fb37a463-1 tmp-680b775fb37a463-2)))
+                                                (map (lambda (tmp-680b775fb37a463-132e
+                                                              tmp-680b775fb37a463-132d
+                                                              tmp-680b775fb37a463-132c)
+                                                       (cons tmp-680b775fb37a463-132c
+                                                             (cons tmp-680b775fb37a463-132d tmp-680b775fb37a463-132e)))
                                                      e2*
                                                      e1*
                                                      args*)))
@@ -1360,7 +1718,7 @@
             (gen-var (lambda (id) (let ((id (if (syntax? id) (syntax-expression id) id))) (gen-lexical id))))
             (lambda-var-list
              (lambda (vars)
-               (let lvl ((vars vars) (ls '()) (w '(())))
+               (let lvl ((vars vars) (ls '()) (w empty-wrap))
                  (cond
                    ((pair? vars) (lvl (cdr vars) (cons (wrap (car vars) w #f) ls) w))
                    ((id? vars) (cons (wrap vars w #f) ls))
@@ -1424,7 +1782,7 @@
                 (lambda (src e r maps ellipsis? mod)
                   (if (id? e)
                       (call-with-values
-                       (lambda () (resolve-identifier e '(()) r mod #f))
+                       (lambda () (resolve-identifier e empty-wrap r mod #f))
                        (lambda (type value mod)
                          (let ((key type))
                            (cond
@@ -1497,7 +1855,7 @@
                     ((= level 0) (values var maps))
                     ((null? maps) (syntax-violation 'syntax "missing ellipsis" src))
                     (else (call-with-values
-                           (lambda () (gen-ref src var (- level 1) (cdr maps)))
+                           (lambda () (gen-ref src var (#{1-}# level) (cdr maps)))
                            (lambda (outer-var outer-maps)
                              (let ((b (assq outer-var (car maps))))
                                (if b
@@ -1537,14 +1895,14 @@
                (regen (lambda (x)
                         (let ((key (car x)))
                           (cond
-                            ((memv key '(ref)) (build-lexical-reference 'value #f (cadr x) (cadr x)))
-                            ((memv key '(primitive)) (build-primref #f (cadr x)))
-                            ((memv key '(quote)) (build-data #f (cadr x)))
+                            ((memv key '(ref)) (build-lexical-reference no-source (cadr x) (cadr x)))
+                            ((memv key '(primitive)) (build-primref no-source (cadr x)))
+                            ((memv key '(quote)) (build-data no-source (cadr x)))
                             ((memv key '(lambda))
                              (if (list? (cadr x))
-                                 (build-simple-lambda #f (cadr x) #f (cadr x) '() (regen (caddr x)))
+                                 (build-simple-lambda no-source (cadr x) #f (cadr x) '() (regen (caddr x)))
                                  (error "how did we get here" x)))
-                            (else (build-primcall #f (car x) (map regen (cdr x)))))))))
+                            (else (build-primcall no-source (car x) (map regen (cdr x)))))))))
        (lambda (e r w s mod)
          (let* ((e (source-wrap e w s mod)) (tmp e) (tmp ($sc-dispatch tmp '(_ any))))
            (if tmp
@@ -1603,8 +1961,8 @@
                (apply (lambda (args e1 e2)
                         (build-it
                          '()
-                         (map (lambda (tmp-680b775fb37a463-6b8 tmp-680b775fb37a463-6b7 tmp-680b775fb37a463-6b6)
-                                (cons tmp-680b775fb37a463-6b6 (cons tmp-680b775fb37a463-6b7 tmp-680b775fb37a463-6b8)))
+                         (map (lambda (tmp-680b775fb37a463-2 tmp-680b775fb37a463-1 tmp-680b775fb37a463)
+                                (cons tmp-680b775fb37a463 (cons tmp-680b775fb37a463-1 tmp-680b775fb37a463-2)))
                               e2
                               e1
                               args)))
@@ -1614,9 +1972,9 @@
                      (apply (lambda (docstring args e1 e2)
                               (build-it
                                (list (cons 'documentation (syntax->datum docstring)))
-                               (map (lambda (tmp-680b775fb37a463-6ce tmp-680b775fb37a463-6cd tmp-680b775fb37a463-6cc)
-                                      (cons tmp-680b775fb37a463-6cc
-                                            (cons tmp-680b775fb37a463-6cd tmp-680b775fb37a463-6ce)))
+                               (map (lambda (tmp-680b775fb37a463-6ae tmp-680b775fb37a463-6ad tmp-680b775fb37a463-6ac)
+                                      (cons tmp-680b775fb37a463-6ac
+                                            (cons tmp-680b775fb37a463-6ad tmp-680b775fb37a463-6ae)))
                                     e2
                                     e1
                                     args)))
@@ -1759,7 +2117,7 @@
                              ((memv key '(global)) (build-global-assignment s value (expand val r w mod) id-mod))
                              ((memv key '(macro))
                               (if (procedure-property value 'variable-transformer)
-                                  (expand (expand-macro value e r w s #f mod) r '(()) mod)
+                                  (expand (expand-macro value e r w s #f mod) r empty-wrap mod)
                                   (syntax-violation
                                    'set!
                                    "not a variable transformer"
@@ -1773,7 +2131,7 @@
                (if tmp
                    (apply (lambda (head tail val)
                             (call-with-values
-                             (lambda () (syntax-type head r '(()) #f #f mod #t))
+                             (lambda () (syntax-type head r empty-wrap no-source #f mod #t))
                              (lambda (type value ee* ee ww ss modmod)
                                (let ((key type))
                                  (if (memv key '(module-ref))
@@ -1806,7 +2164,7 @@
                       (values
                        (syntax->datum id)
                        r
-                       '((top))
+                       top-wrap
                        #f
                        (syntax->datum (cons (make-syntax 'public '((top)) '(hygiene guile)) mod))))
                     tmp)
@@ -1826,7 +2184,7 @@
                          (let loop ((i 0))
                            (if (= i n)
                                (begin (if #f #f) v)
-                               (begin (vector-set! v i (remodulate (vector-ref x i) mod)) (loop (+ i 1)))))))
+                               (begin (vector-set! v i (remodulate (vector-ref x i) mod)) (loop (#{1+}# i)))))))
                       (else x)))))
          (let* ((tmp e)
                 (tmp-1 ($sc-dispatch
@@ -1836,14 +2194,14 @@
                     (apply (lambda (id)
                              (and (id? id) (equal? (cdr (or (and (syntax? id) (syntax-module id)) mod)) '(guile))))
                            tmp-1))
-               (apply (lambda (id) (values (syntax->datum id) r '((top)) #f '(primitive))) tmp-1)
+               (apply (lambda (id) (values (syntax->datum id) r top-wrap #f '(primitive))) tmp-1)
                (let ((tmp-1 ($sc-dispatch tmp '(_ each-any any))))
                  (if (and tmp-1 (apply (lambda (mod id) (and (and-map id? mod) (id? id))) tmp-1))
                      (apply (lambda (mod id)
                               (values
                                (syntax->datum id)
                                r
-                               '((top))
+                               top-wrap
                                #f
                                (syntax->datum (cons (make-syntax 'private '((top)) '(hygiene guile)) mod))))
                             tmp-1)
@@ -1867,7 +2225,7 @@
        (let* ((tmp e) (tmp-1 ($sc-dispatch tmp '(_ any any))))
          (if tmp-1
              (apply (lambda (test then)
-                      (build-conditional s (expand test r w mod) (expand then r w mod) (build-void #f)))
+                      (build-conditional s (expand test r w mod) (expand then r w mod) (build-void no-source)))
                     tmp-1)
              (let ((tmp-1 ($sc-dispatch tmp '(_ any any any))))
                (if tmp-1
@@ -1911,7 +2269,7 @@
                                          (if (and tmp-1 (apply (lambda (x dots) (ellipsis? dots)) tmp-1))
                                              (apply (lambda (x dots)
                                                       (call-with-values
-                                                       (lambda () (cvt x (+ n 1) ids))
+                                                       (lambda () (cvt x (#{1+}# n) ids))
                                                        (lambda (p ids)
                                                          (values (if (eq? p 'any) 'each-any (vector 'each p)) ids))))
                                                     tmp-1)
@@ -1957,10 +2315,10 @@
                   (let ((ids (map car pvars)) (levels (map cdr pvars)))
                     (let ((labels (gen-labels ids)) (new-vars (map gen-var ids)))
                       (build-primcall
-                       #f
+                       no-source
                        'apply
                        (list (build-simple-lambda
-                              #f
+                              no-source
                               (map syntax->datum ids)
                               #f
                               new-vars
@@ -1971,7 +2329,7 @@
                                 labels
                                 (map (lambda (var level) (cons 'syntax (cons var level))) new-vars (map cdr pvars))
                                 r)
-                               (make-binding-wrap ids labels '(()))
+                               (make-binding-wrap ids labels empty-wrap)
                                mod))
                              y))))))
                (gen-clause
@@ -1986,36 +2344,38 @@
                         (syntax-violation 'syntax-case "duplicate pattern variable" pat))
                        (else (let ((y (gen-var 'tmp)))
                                (build-call
-                                #f
+                                no-source
                                 (build-simple-lambda
-                                 #f
+                                 no-source
                                  (list 'tmp)
                                  #f
                                  (list y)
                                  '()
-                                 (let ((y (build-lexical-reference 'value #f 'tmp y)))
+                                 (let ((y (build-lexical-reference no-source 'tmp y)))
                                    (build-conditional
-                                    #f
+                                    no-source
                                     (let* ((tmp fender) (tmp ($sc-dispatch tmp '#(atom #t))))
                                       (if tmp
                                           (apply (lambda () y) tmp)
                                           (build-conditional
-                                           #f
+                                           no-source
                                            y
                                            (build-dispatch-call pvars fender y r mod)
-                                           (build-data #f #f))))
+                                           (build-data no-source #f))))
                                     (build-dispatch-call pvars exp y r mod)
                                     (gen-syntax-case x keys clauses r mod))))
                                 (list (if (eq? p 'any)
-                                          (build-primcall #f 'list (list x))
-                                          (build-primcall #f '$sc-dispatch (list x (build-data #f p)))))))))))))
+                                          (build-primcall no-source 'list (list x))
+                                          (build-primcall no-source '$sc-dispatch (list x (build-data no-source p)))))))))))))
                (gen-syntax-case
                 (lambda (x keys clauses r mod)
                   (if (null? clauses)
                       (build-primcall
-                       #f
+                       no-source
                        'syntax-violation
-                       (list (build-data #f #f) (build-data #f "source expression failed to match any pattern") x))
+                       (list (build-data no-source #f)
+                             (build-data no-source "source expression failed to match any pattern")
+                             x))
                       (let* ((tmp-1 (car clauses)) (tmp ($sc-dispatch tmp-1 '(any any))))
                         (if tmp
                             (apply (lambda (pat exp)
@@ -2024,12 +2384,12 @@
                                                (lambda (x) (not (free-id=? pat x)))
                                                (cons (make-syntax '... '((top)) '(hygiene guile)) keys)))
                                          (if (free-id=? pat (make-syntax '_ '((top)) '(hygiene guile)))
-                                             (expand exp r '(()) mod)
+                                             (expand exp r empty-wrap mod)
                                              (let ((labels (list (gen-label))) (var (gen-var pat)))
                                                (build-call
-                                                #f
+                                                no-source
                                                 (build-simple-lambda
-                                                 #f
+                                                 no-source
                                                  (list (syntax->datum pat))
                                                  #f
                                                  (list var)
@@ -2037,7 +2397,7 @@
                                                  (expand
                                                   exp
                                                   (extend-env labels (list (cons 'syntax (cons var 0))) r)
-                                                  (make-binding-wrap (list pat) labels '(()))
+                                                  (make-binding-wrap (list pat) labels empty-wrap)
                                                   mod))
                                                 (list x))))
                                          (gen-clause x keys (cdr clauses) r pat #t exp mod)))
@@ -2057,13 +2417,13 @@
                               (build-call
                                s
                                (build-simple-lambda
-                                #f
+                                no-source
                                 (list 'tmp)
                                 #f
                                 (list x)
                                 '()
-                                (gen-syntax-case (build-lexical-reference 'value #f 'tmp x) key m r mod))
-                               (list (expand val r '(()) mod))))
+                                (gen-syntax-case (build-lexical-reference no-source 'tmp x) key m r mod))
+                               (list (expand val r empty-wrap mod))))
                             (syntax-violation 'syntax-case "invalid literals list" e)))
                       tmp)
                (syntax-violation #f "source expression failed to match any pattern" tmp-1))))))
@@ -2084,8 +2444,8 @@
                              (else (annotate x)))))))
               (expand-top-sequence
                (list (unstrip x))
-               '()
-               '((top))
+               null-env
+               top-wrap
                #f
                m
                esew
@@ -2099,7 +2459,7 @@
                               (vector (assq-ref alist 'filename) (assq-ref alist 'line) (assq-ref alist 'column))))))
               (make-syntax
                datum
-               (if id (syntax-wrap id) '(()))
+               (if id (syntax-wrap id) empty-wrap)
                (and id (syntax-module id))
                (cond
                  ((not source) (props->sourcev (source-properties datum)))
@@ -2111,7 +2471,7 @@
           (lambda (ls)
             (let ((x ls)) (if (not (list? x)) (syntax-violation 'generate-temporaries "invalid argument" x)))
             (let ((mod (cons 'hygiene (module-name (current-module)))))
-              (map (lambda (x) (wrap (gen-var 't) '((top)) mod)) ls))))
+              (map (lambda (x) (wrap (gen-var 't) top-wrap mod)) ls))))
     (set! free-identifier=?
           (lambda (x y)
             (let ((x x)) (if (not (nonsymbol-id? x)) (syntax-violation 'free-identifier=? "invalid argument" x)))
@@ -2146,10 +2506,10 @@
                   (lambda (e r w s rib mod)
                     (letrec* ((strip-anti-mark
                                (lambda (w)
-                                 (let ((ms (car w)) (s (cdr w)))
-                                   (if (and (pair? ms) (eq? (car ms) #f))
-                                       (cons (cdr ms) (if rib (cons rib (cdr s)) (cdr s)))
-                                       (cons ms (if rib (cons rib s) s)))))))
+                                 (let ((ms (wrap-marks w)) (s (wrap-subst w)))
+                                   (if (and (pair? ms) (eq? (car ms) the-anti-mark))
+                                       (make-wrap (cdr ms) (if rib (cons rib (cdr s)) (cdr s)))
+                                       (make-wrap ms (if rib (cons rib s) s)))))))
                       (call-with-values
                        (lambda ()
                          (resolve-identifier
@@ -2270,7 +2630,7 @@
                 ((eq? p 'any) (list e))
                 ((eq? p '_) '())
                 ((syntax? e) (match* (syntax-expression e) p (syntax-wrap e) '() (syntax-module e)))
-                (else (match* e p '(()) '() #f))))))))
+                (else (match* e p empty-wrap '() #f))))))))
 
 (define with-syntax
   (let ((make-syntax make-syntax))
@@ -2445,11 +2805,8 @@
                                  #f
                                  k
                                  (list docstring)
-                                 (map (lambda (tmp-680b775fb37a463-11b0
-                                               tmp-680b775fb37a463-11af
-                                               tmp-680b775fb37a463-11ae)
-                                        (list (cons tmp-680b775fb37a463-11ae tmp-680b775fb37a463-11af)
-                                              tmp-680b775fb37a463-11b0))
+                                 (map (lambda (tmp-680b775fb37a463-2 tmp-680b775fb37a463-1 tmp-680b775fb37a463)
+                                        (list (cons tmp-680b775fb37a463 tmp-680b775fb37a463-1) tmp-680b775fb37a463-2))
                                       template
                                       pattern
                                       keyword)))
@@ -2461,11 +2818,11 @@
                                        dots
                                        k
                                        '()
-                                       (map (lambda (tmp-680b775fb37a463-11c9
-                                                     tmp-680b775fb37a463-11c8
-                                                     tmp-680b775fb37a463-11c7)
-                                              (list (cons tmp-680b775fb37a463-11c7 tmp-680b775fb37a463-11c8)
-                                                    tmp-680b775fb37a463-11c9))
+                                       (map (lambda (tmp-680b775fb37a463-147b
+                                                     tmp-680b775fb37a463-147a
+                                                     tmp-680b775fb37a463)
+                                              (list (cons tmp-680b775fb37a463 tmp-680b775fb37a463-147a)
+                                                    tmp-680b775fb37a463-147b))
                                             template
                                             pattern
                                             keyword)))
@@ -2481,11 +2838,11 @@
                                              dots
                                              k
                                              (list docstring)
-                                             (map (lambda (tmp-680b775fb37a463-11e8
-                                                           tmp-680b775fb37a463-11e7
-                                                           tmp-680b775fb37a463-11e6)
-                                                    (list (cons tmp-680b775fb37a463-11e6 tmp-680b775fb37a463-11e7)
-                                                          tmp-680b775fb37a463-11e8))
+                                             (map (lambda (tmp-680b775fb37a463-149a
+                                                           tmp-680b775fb37a463-1
+                                                           tmp-680b775fb37a463)
+                                                    (list (cons tmp-680b775fb37a463 tmp-680b775fb37a463-1)
+                                                          tmp-680b775fb37a463-149a))
                                                   template
                                                   pattern
                                                   keyword)))
@@ -2640,9 +2997,9 @@
                                                                    (apply (lambda (p)
                                                                             (if (= lev 0)
                                                                                 (quasiappend
-                                                                                 (map (lambda (tmp-680b775fb37a463-129d)
+                                                                                 (map (lambda (tmp-680b775fb37a463-154c)
                                                                                         (list "value"
-                                                                                              tmp-680b775fb37a463-129d))
+                                                                                              tmp-680b775fb37a463-154c))
                                                                                       p)
                                                                                  (quasi q lev))
                                                                                 (quasicons
@@ -2678,8 +3035,8 @@
                                            (apply (lambda (p)
                                                     (if (= lev 0)
                                                         (quasilist*
-                                                         (map (lambda (tmp-680b775fb37a463-12b3)
-                                                                (list "value" tmp-680b775fb37a463-12b3))
+                                                         (map (lambda (tmp-680b775fb37a463)
+                                                                (list "value" tmp-680b775fb37a463))
                                                               p)
                                                          (vquasi q lev))
                                                         (quasicons
@@ -2699,8 +3056,8 @@
                                                  (apply (lambda (p)
                                                           (if (= lev 0)
                                                               (quasiappend
-                                                               (map (lambda (tmp-680b775fb37a463-12b8)
-                                                                      (list "value" tmp-680b775fb37a463-12b8))
+                                                               (map (lambda (tmp-680b775fb37a463)
+                                                                      (list "value" tmp-680b775fb37a463))
                                                                     p)
                                                                (vquasi q lev))
                                                               (quasicons
@@ -2782,7 +3139,8 @@
                                        (let ((tmp-1 ls))
                                          (let ((tmp ($sc-dispatch tmp-1 'each-any)))
                                            (if tmp
-                                               (apply (lambda (t-680b775fb37a463) (cons "vector" t-680b775fb37a463))
+                                               (apply (lambda (t-680b775fb37a463-15b0)
+                                                        (cons "vector" t-680b775fb37a463-15b0))
                                                       tmp)
                                                (syntax-violation
                                                 #f
@@ -2792,8 +3150,8 @@
                               (let ((tmp-1 ($sc-dispatch tmp '(#(atom "quote") each-any))))
                                 (if tmp-1
                                     (apply (lambda (y)
-                                             (k (map (lambda (tmp-680b775fb37a463-130d)
-                                                       (list "quote" tmp-680b775fb37a463-130d))
+                                             (k (map (lambda (tmp-680b775fb37a463-15bc)
+                                                       (list "quote" tmp-680b775fb37a463-15bc))
                                                      y)))
                                            tmp-1)
                                     (let ((tmp-1 ($sc-dispatch tmp '(#(atom "list") . each-any))))
@@ -2804,8 +3162,8 @@
                                                 (apply (lambda (y z) (f z (lambda (ls) (k (append y ls))))) tmp-1)
                                                 (let ((else tmp))
                                                   (let ((tmp x))
-                                                    (let ((t-680b775fb37a463-131c tmp))
-                                                      (list "list->vector" t-680b775fb37a463-131c)))))))))))))))))
+                                                    (let ((t-680b775fb37a463-15cb tmp))
+                                                      (list "list->vector" t-680b775fb37a463-15cb)))))))))))))))))
                (emit (lambda (x)
                        (let ((tmp x))
                          (let ((tmp-1 ($sc-dispatch tmp '(#(atom "quote") any))))
@@ -2817,9 +3175,9 @@
                                               (let ((tmp-1 (map emit x)))
                                                 (let ((tmp ($sc-dispatch tmp-1 'each-any)))
                                                   (if tmp
-                                                      (apply (lambda (t-680b775fb37a463-132b)
+                                                      (apply (lambda (t-680b775fb37a463-15da)
                                                                (cons (make-syntax 'list '((top)) '(hygiene guile))
-                                                                     t-680b775fb37a463-132b))
+                                                                     t-680b775fb37a463-15da))
                                                              tmp)
                                                       (syntax-violation
                                                        #f
@@ -2835,14 +3193,14 @@
                                                           (let ((tmp-1 (list (emit (car x*)) (f (cdr x*)))))
                                                             (let ((tmp ($sc-dispatch tmp-1 '(any any))))
                                                               (if tmp
-                                                                  (apply (lambda (t-680b775fb37a463-133f
-                                                                                  t-680b775fb37a463-133e)
+                                                                  (apply (lambda (t-680b775fb37a463-15ee
+                                                                                  t-680b775fb37a463-15ed)
                                                                            (list (make-syntax
                                                                                   'cons
                                                                                   '((top))
                                                                                   '(hygiene guile))
-                                                                                 t-680b775fb37a463-133f
-                                                                                 t-680b775fb37a463-133e))
+                                                                                 t-680b775fb37a463-15ee
+                                                                                 t-680b775fb37a463-15ed))
                                                                          tmp)
                                                                   (syntax-violation
                                                                    #f
@@ -2855,12 +3213,12 @@
                                                           (let ((tmp-1 (map emit x)))
                                                             (let ((tmp ($sc-dispatch tmp-1 'each-any)))
                                                               (if tmp
-                                                                  (apply (lambda (t-680b775fb37a463-134b)
+                                                                  (apply (lambda (t-680b775fb37a463-15fa)
                                                                            (cons (make-syntax
                                                                                   'append
                                                                                   '((top))
                                                                                   '(hygiene guile))
-                                                                                 t-680b775fb37a463-134b))
+                                                                                 t-680b775fb37a463-15fa))
                                                                          tmp)
                                                                   (syntax-violation
                                                                    #f
