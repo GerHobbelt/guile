@@ -134,7 +134,7 @@ of all the special characters.
                       #\\\\)
 => \"\\\\*\\\\*\\\\*\\\\(Example String\\\\)\\\\*\\\\*\\\\*\"
 
-;; also can escape a singe char...
+;; also can escape a single char...
  (escape-special-chars \"richardt@@vzavenue.net\"
                       #\\@@
                       #\\@@)

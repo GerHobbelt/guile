@@ -1,5 +1,5 @@
 Guile NEWS --- history of user-visible changes.
-Copyright (C) 1996-2024 Free Software Foundation, Inc.
+Copyright (C) 1996-2025 Free Software Foundation, Inc.
 See the end for copying conditions.
 
 Please send Guile bug reports to bug-guile@gnu.org.
@@ -76,6 +76,20 @@ every line in a file.
    previously Guile would pass through the related exception.  Now it
    prints the file descriptor instead (as it does when `ttyname` isn't
    available or the port isn't a tty).
+** Fix build error when cross-compiling to MinGW
+   (<https://bugs.gnu.org/75642>)
+** Change <libguile/scm.h> to allow compilation with -Werror=undef
+   (<https://bugs.gnu.org/75085>)
+** 'all-threads' no longer includes the finalizer thread
+   (<https://bugs.gnu.org/76343>)
+   Previously 'all-threads' would include the finalizer thread.  This,
+   in turn, would trigger warnings from 'primitive-fork' and 'environ'
+   suggesting they are being called in a multi-threaded context, when in
+   fact user code did not create any thread.
+** Calling 'environ' without arguments in a multi-threaded program is OK
+   This used to trigger a warning, unduly.
+** SRFI-19: 'date->string' converter ~V is now correctly interpreted
+   (<https://bugs.gnu.org/74841>)
 
 
 Changes in 3.0.10 (since 3.0.9)

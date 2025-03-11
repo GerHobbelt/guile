@@ -26,7 +26,8 @@
   #:use-module (test-suite lib)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-19)
-  #:use-module (ice-9 format))
+  #:use-module (ice-9 format)
+  #:use-module (ice-9 match))
 
 ;; Make sure we use the default locale.
 (when (defined? 'setlocale)
@@ -412,7 +413,61 @@ incomplete numerical tower implementation.)"
   (with-test-prefix "date-week-number"
     (pass-if (= 0 (date-week-number (make-date 0 0 0 0 1 1 1984 0) 0)))
     (pass-if (= 0 (date-week-number (make-date 0 0 0 0 7 1 1984 0) 0)))
-    (pass-if (= 1 (date-week-number (make-date 0 0 0 0 8 1 1984 0) 0)))))
+    (pass-if (= 1 (date-week-number (make-date 0 0 0 0 8 1 1984 0) 0))))
+
+  (let ((convert (match-lambda
+                   ((y m d)
+                    (date->string (make-date 0 0 0 0 d m y 0)
+                                  "~V")))))
+    ;; Taken from the test suite for the reference implementation.
+    (with-test-prefix "date->string ~V"
+      (pass-if-equal "Thursday, week 53" "53"
+        (convert '(2020 12 31)))
+      (pass-if-equal "Friday, week 53 (previous year)" "53"
+        (convert '(2021 1 1)))
+      (pass-if-equal "Sunday, week 53 (previous year)" "53"
+        (convert '(2021 1 3)))
+      (pass-if-equal "Monday, week 1" "01"
+        (convert '(2021 1 4)))
+
+      (pass-if-equal "Sunday, week 52" "52"
+        (convert '(2019 12 29)))
+      (pass-if-equal "Monday, week 1 (next year)" "01"
+        (convert '(2019 12 30)))
+      (pass-if-equal "Tuesday, week 1 (next year)" "01"
+        (convert '(2019 12 31)))
+      (pass-if-equal "Wednesday, week 1" "01"
+        (convert '(2020 1 1)))
+
+      (pass-if-equal "Saturday, week 52" "52"
+        (convert '(2016 12 31)))
+      (pass-if-equal "Sunday, week 52 (previous year)" "52"
+        (convert '(2017 1 1)))
+      (pass-if-equal "Monday, week 1" "01"
+        (convert '(2017 1 2)))
+      (pass-if-equal "Sunday, week 1" "01"
+        (convert '(2017 1 8)))
+      (pass-if-equal "Monday, week 2" "02"
+        (convert '(2017 1 9)))
+
+      (pass-if-equal "Sunday, week 52" "52"
+        (convert '(2014 12 28)))
+      (pass-if-equal "Monday, week 1 (next year)" "01"
+        (convert '(2014 12 29)))
+      (pass-if-equal "Tuesday, week 1 (next year)" "01"
+        (convert '(2014 12 30)))
+      (pass-if-equal "Wednesday, week 1 (next year)" "01"
+        (convert '(2014 12 31)))
+      (pass-if-equal "Thursday, week 1" "01"
+        (convert '(2015 1 1)))
+      (pass-if-equal "Friday, week 1" "01"
+        (convert '(2015 1 2)))
+      (pass-if-equal "Saturday, week 1" "01"
+        (convert '(2015 1 3)))
+      (pass-if-equal "Sunday, week 1" "01"
+        (convert '(2015 1 4)))
+      (pass-if-equal "Monday, week 2" "02"
+        (convert '(2015 1 5))))))
 
 
 ;; Local Variables:

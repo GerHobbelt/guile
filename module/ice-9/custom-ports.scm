@@ -127,7 +127,7 @@
           (id "custom-port")
           (print (make-default-print #:id id))
           (truncate default-truncate)
-          (encoding (string->symbol (fluid-ref %default-port-encoding)))
+          (encoding (and=> (fluid-ref %default-port-encoding) string->symbol))
           (conversion-strategy (fluid-ref %default-port-conversion-strategy))
           (close-on-gc? #f))
   "Create a custom port whose behavior is determined by the methods passed

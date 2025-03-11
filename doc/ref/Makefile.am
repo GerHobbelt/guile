@@ -104,9 +104,6 @@ PICTURES = hierarchy.eps \
 	   hierarchy.pdf \
 	   hierarchy.png \
 	   hierarchy.txt \
-	   gds.eps \
-	   gds.pdf \
-	   gds.txt \
 	   scheme.eps \
 	   scheme.pdf \
 	   scheme.txt \

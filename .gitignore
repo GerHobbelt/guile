@@ -1,3 +1,4 @@
+.dirstamp
 *.o
 *.info
 *.info-[0-9]*
@@ -54,8 +55,6 @@ gdb-pre-inst-guile
 cscope.out
 cscope.files
 *.log
-gds-test.debug
-gds-test.transcript
 INSTALL
 *.aux
 *.cp
@@ -126,7 +125,6 @@ INSTALL
 /lib/sys/uio.h
 /lib/time.h
 /lib/unistd.h
-/lib/unistr/.dirstamp
 /lib/unistr.h
 /lib/unitypes.h
 /lib/unused-parameter.h

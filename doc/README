@@ -1,9 +1,6 @@
 This directory contains documentation on the Guile core.         -*-text-*-
 
-The documentation consists of the following manuals.
-
-- The Guile Tutorial (guile-tut.texi) contains a tutorial introduction
-  to using Guile.
+The documentation consists of the following manuals:
 
 - The Guile Reference Manual (guile.texi) contains (or is intended to
   contain) reference documentation on all aspects of Guile.

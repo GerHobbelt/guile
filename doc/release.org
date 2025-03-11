@@ -11,7 +11,7 @@ This document describes the typical release process for Guile 3.0.
 
 … or http://bugs.gnu.org/guile, for an idea of things to fix.
 
-** Update Gnulib
+** Optionally, Update Gnulib
 
 The commit log's first line should be "Update Gnulib to X", where X is
 the output of `git describe' in the Gnulib repo.
@@ -24,40 +24,34 @@ portability or build issues can be uncovered in time.
 
 ** Make sure it works, portably, and with different configurations
 
-*** Check [[http://hydra.nixos.org/jobset/gnu/guile-2-0][Hydra]]
+*** Check [[https://ci.guix.gnu.org/jobset/guile][continuous integration]]
 
 This contains builds and cross-builds on different platforms, with
 different `configure' switches, different CPPFLAGS, and different
 versions of the compiler.
 
-As of this writing, there are unfixed failures.  For instance Darwin's
-compiler randomly crashes, preventing build completion; the FreeBSD 7.x
-box experiences Guile crashes while running the test suite, which were
-not fixed because not reproduced elsewhere.  Even for these platforms,
-make sure "things don't get worse", at least.
+You can also build things with Guix locally by running commands from the
+top-level such as:
 
-*** Check [[http://autobuild.josefsson.org/guile/][Autobuild]]
+#+begin_example
+  guix build -f guix.scm
+  guix build -f guix.scm -s i686-linux
+  guix build -f guix.scm --target=aarch64-linux-gnu
+  guix build -f guix.scm --target=x86_64-w64-mingw32
+#+end_example
 
-This contains build reports from other people, typically on lesser used
-platforms, so it's worth checking.
+*** Optionally, test portability to other CPUs and OSes
 
-*** Use the [[http://gcc.gnu.org/wiki/CompileFarm][GCC Compile Farm]]
-
-Use the GCC Compile Farm to check on lesser used architectures or
-operating systems.  In particular, the Farm has ARM, SPARC64, PowerPC,
-and MIPS GNU/Linux boxes (remember that this is not superfluous: Debian
-builds on 11 architectures).  It also has FreeBSD and NetBSD boxes.
-
-*** Use porter boxes
-
-If you're still in a good mood, you may also want to check on porter
-boxes for other OSes.  The GNU/Hurd people have [[http://www.gnu.org/software/hurd/public_hurd_boxen.html][porter boxes]], and so do
-the [[http://www.opencsw.org/standards/build_farm][OpenCSW Solaris Team]] and the [[http://lists.gnu.org/archive/html/autoconf/2012-11/msg00039.html][Snakebite]] project.
-
-*** Post a pre-release announcement to `platform-testers@gnu.org'
-
-Send a link to [[http://hydra.nixos.org/job/gnu/guile-2-0/tarball/latest/download-by-type/file/source-dist][the latest tarball]].  This will allow readers to test on
-possibly weird platforms and report any bugs.
+  - Use the [[https://gcc.gnu.org/wiki/CompileFarm][GCC Compile Farm]] to check on lesser used architectures or
+    operating systems.  In particular, the Farm has ARM, SPARC64,
+    PowerPC, and MIPS GNU/Linux boxes (remember that this is not
+    superfluous: Debian builds on 11 architectures).  It also has
+    FreeBSD and NetBSD boxes.
+  - The GNU/Hurd people have [[http://www.gnu.org/software/hurd/public_hurd_boxen.html][porter boxes]] (better yet: you can use a
+    [[https://guix.gnu.org/manual/devel/en/html_node/Virtualization-Services.html#index-childhurd_002c-offloading][childhurd]] on Guix System), and so does the [[http://www.opencsw.org/standards/build_farm][OpenCSW Solaris Team]].
+  - You can also send a link to the latest tarball to [[https://lists.gnu.org/mailman/listinfo/platform-testers][platform-testers]].
+    This will allow readers to test on possibly weird platforms and
+    report any bugs.
 
 ** Update `GUILE-VERSION'
 
@@ -129,8 +123,8 @@ Announcements").
 ** Update web pages
 
   - Update the version number in ‘latest-guile-version’ in the (website
-    utils) module of the web site.
-  - Add a news item by dropping a Markdown file under posts/.
+    utils) module of the [[https://git.savannah.gnu.org/cgit/guile/guile-web.git][web site]].
+  - Add a news item by dropping a Markdown file under =posts/=.
   - Build the web site: =haunt build=.
   - Synchronize the files under site/ over the CVS repo.
 
@@ -170,7 +164,7 @@ Send to these places, preferably in the morning on a working day (UTC):
 
 
 
-Copyright © 2011, 2012, 2013, 2017, 2018 Free Software Foundation, Inc.
+Copyright © 2011, 2012, 2013, 2017, 2018, 2025 Free Software Foundation, Inc.
 
   Copying and distribution of this file, with or without modification,
   are permitted in any medium without royalty provided the copyright

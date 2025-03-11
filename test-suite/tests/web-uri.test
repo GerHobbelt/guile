@@ -367,6 +367,16 @@
   (pass-if "//bad.host.1"
     (not (string->uri-reference "//bad.host.1")))
 
+  (pass-if "//bad.host.1."
+    (not (string->uri-reference "//bad.host.1.")))
+
+  (pass-if "//bad.host.."
+    (not (string->uri-reference "//bad.host..")))
+
+  (pass-if "//1.good.host."
+    (uri=? (string->uri-reference "//1.good.host.")
+           #:host "1.good.host." #:path ""))
+
   (pass-if "http://1.good.host"
     (uri=? (string->uri-reference "http://1.good.host")
            #:scheme 'http #:host "1.good.host" #:path ""))

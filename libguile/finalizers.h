@@ -1,7 +1,7 @@
 #ifndef SCM_FINALIZERS_H
 #define SCM_FINALIZERS_H
 
-/* Copyright 2012, 2013, 2014, 2018
+/* Copyright 2012, 2013, 2014, 2018, 2025
      Free Software Foundation, Inc.
 
    This file is part of Guile.
@@ -41,6 +41,9 @@ SCM_INTERNAL void scm_i_finalizer_pre_fork (void);
    called from a finalizer, which may be from an async or from another
    thread. */
 SCM_INTERNAL void scm_i_register_async_gc_callback (void (*callback) (void));
+
+/* Return true if THREAD is the finalizer thread.  */
+SCM_INTERNAL int scm_i_is_finalizer_thread (struct scm_thread *thread);
 
 SCM_API int scm_set_automatic_finalization_enabled (int enabled_p);
 SCM_API int scm_run_finalizers (void);

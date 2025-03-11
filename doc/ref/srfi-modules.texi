@@ -2864,8 +2864,8 @@ with locale decimal point, eg.@: @samp{5.2}
 @item @nicode{~T} @tab time, 24 hour clock, @samp{~H:~M:~S}
 @item @nicode{~U} @tab week of year, Sunday first day of week,
 @samp{00} to @samp{52}
-@item @nicode{~V} @tab week of year, Monday first day of week,
-@samp{01} to @samp{53}
+@item @nicode{~V} @tab ISO 8601 week number of the year,
+Monday first day of week, @samp{01} to @samp{53}
 @item @nicode{~w} @tab day of week, 0 for Sunday, @samp{0} to @samp{6}
 @item @nicode{~W} @tab week of year, Monday first day of week,
 @samp{00} to @samp{52}

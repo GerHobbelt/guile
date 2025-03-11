@@ -1,4 +1,4 @@
-/* Copyright 1995-1998,2000-2014,2018-2019,2023-2024
+/* Copyright 1995-1998,2000-2014,2018-2019,2023-2025
      Free Software Foundation, Inc.
 
    This file is part of Guile.
@@ -47,6 +47,7 @@
 #include "dynwind.h"
 #include "eval.h"
 #include "extensions.h"
+#include "finalizers.h"
 #include "fluids.h"
 #include "gc-inline.h"
 #include "gc.h"
@@ -1691,7 +1692,9 @@ SCM_DEFINE (scm_all_threads, "all-threads", 0, 0, 0,
 
   for (t = all_threads; t && n > 0; t = t->next_thread)
     {
-      if (!t->exited && !scm_i_is_signal_delivery_thread (t))
+      if (!t->exited
+          && !scm_i_is_signal_delivery_thread (t)
+          && !scm_i_is_finalizer_thread (t))
 	{
 	  SCM_SETCAR (*l, t->handle);
 	  l = SCM_CDRLOC (*l);

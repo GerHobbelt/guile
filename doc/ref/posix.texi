@@ -3822,6 +3822,10 @@ process.  @xref{i18n Introduction, locale objects and
 @code{make-locale}}, for a thread-safe alternative.
 @end deffn
 
+A @code{system-error} exception (@pxref{Handling Errors}) is raised by
+@code{setlocale} when @var{locale-name} does not match any of the
+locales compiled on the system.
+
 @node Encryption
 @subsection Encryption
 @cindex encryption

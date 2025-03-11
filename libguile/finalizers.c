@@ -1,4 +1,4 @@
-/* Copyright 2012-2014,2018-2020,2022
+/* Copyright 2012-2014,2018-2020,2022,2025
      Free Software Foundation, Inc.
 
    This file is part of Guile.
@@ -37,6 +37,7 @@
 #include "gsubr.h"
 #include "init.h"
 #include "threads.h"
+#include "atomics-internal.h"
 
 #include "finalizers.h"
 
@@ -217,10 +218,14 @@ read_finalization_pipe_data (void *data)
 
   return NULL;
 }
-  
+
+static scm_i_pthread_t finalizer_thread;
+
 static void*
 finalization_thread_proc (void *unused)
 {
+  scm_atomic_set_pointer ((void **) &finalizer_thread,
+                          (void *) pthread_self ());
   while (1)
     {
       struct finalization_pipe_data data;
@@ -255,10 +260,20 @@ finalization_thread_proc (void *unused)
     }
 }
 
+int
+scm_i_is_finalizer_thread (struct scm_thread *t)
+{
+  scm_i_pthread_t us =
+    (scm_i_pthread_t) scm_atomic_ref_pointer ((void **) &finalizer_thread);
+  return pthread_equal (t->pthread, us);
+}
+
 static void*
 run_finalization_thread (void *arg)
 {
-  return scm_with_guile (finalization_thread_proc, arg);
+  void *res = scm_with_guile (finalization_thread_proc, arg);
+  scm_atomic_set_pointer ((void **) &finalizer_thread, NULL);
+  return res;
 }
 
 static void

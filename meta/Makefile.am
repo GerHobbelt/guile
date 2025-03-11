@@ -81,6 +81,7 @@ dependency_substitutions =				\
   -e "s|[@]BDW_GC_CFLAGS[@]|$(BDW_GC_CFLAGS)|g"		\
   -e "s|[@]BDW_GC_LIBS[@]|$(BDW_GC_LIBS)|g"		\
   -e "s|[@]LIB_CLOCK_GETTIME[@]|$(LIB_CLOCK_GETTIME)|g"	\
+  -e "s|[@]LIB_GETRANDOM[@]|$(LIB_GETRANDOM)|g"		\
   -e "s|[@]LIBGMP[@]|$(LIBGMP)|g"			\
   -e "s|[@]LIBLTDL[@]|$(LIBLTDL)|g"			\
   -e "s|[@]LIBFFI_LIBS[@]|$(LIBFFI_LIBS)|g"		\
