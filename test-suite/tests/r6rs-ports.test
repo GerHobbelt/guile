@@ -1652,14 +1652,24 @@ not `set-port-position!'"
 
 (with-test-prefix "custom textual ports"
   (let ((log '()))
+    (define (clear-log!) (set! log '()))
     (define (log! tag args)
       (set! log (acons tag args log)))
     (define (log-calls tag) (lambda args (log! tag args)))
     (define (call-with-logged-calls thunk)
       (log! 'result (list (thunk)))
       (let ((result (reverse log)))
-        (set! log '())
+        (clear-log!)
         result))
+
+    (define-syntax-rule (with-final proc body ...)
+      (let ((reentry? #f))
+        (dynamic-wind (lambda ()
+                        (if reentry?
+                            (error "not reentrant")
+                            (set! reentry? #t)))
+                      (lambda () body ...)
+                      (lambda () proc))))
 
     (define-syntax-rule (pass-if-log-matches id expected expr)
       (pass-if id
@@ -1670,33 +1680,35 @@ not `set-port-position!'"
     (define (test-input-port id make-port)
       (define (call-with-input-string str proc)
         (define pos 0)
-        (proc
-         (make-port id
-                    (lambda (buf start count)
-                      (let ((count (min count (- (string-length str) pos))))
-                        (log! 'read (list count))
-                        (string-copy! buf start str pos (+ pos count))
-                        (set! pos (+ pos count))
-                        count))
-                    (log-calls 'get-position)
-                    (log-calls 'set-position)
-                    (log-calls 'close))))
+        (let ((port (make-port id
+                               (lambda (buf start count)
+                                 (let ((count (min count (- (string-length str) pos))))
+                                   (log! 'read (list count))
+                                   (string-copy! buf start str pos (+ pos count))
+                                   (set! pos (+ pos count))
+                                   count))
+                               (log-calls 'get-position)
+                               (log-calls 'set-position)
+                               (log-calls 'close))))
+          (with-final (close port) (proc port))))
 
       (with-test-prefix id
-        (pass-if-log-matches
-         "make"
-         (('result #t))
-         (input-port? (make-port
-                       "hey"
-                       (log-calls 'read)
-                       (log-calls 'get-position)
-                       (log-calls 'set-position)
-                       (log-calls 'close))))
+        (let ((port (make-port "hey"
+                               (log-calls 'read)
+                               (log-calls 'get-position)
+                               (log-calls 'set-position)
+                               (log-calls 'close))))
+          (with-final
+           (close port)
+           (pass-if-log-matches "make" (('result #t)) (input-port? port))))
+        (pass-if-equal '((close)) log)
+        (clear-log!)
 
         (pass-if-log-matches
          "inputting \"foo\""
          (('read 3)
           ('read 0)
+          ('close)
           ('result "foo"))
          (call-with-input-string "foo" get-string-all))
 
@@ -1706,6 +1718,7 @@ not `set-port-position!'"
            (('read 1024)
             ('read 976)
             ('read 0)
+            ('close)
             ('result (? (lambda (x) (equal? x big-str)))))
            (call-with-input-string big-str get-string-all)))))
 
@@ -1721,20 +1734,20 @@ not `set-port-position!'"
                      (log-calls 'get-position)
                      (log-calls 'set-position)
                      (log-calls 'close)))
-        (proc port)
-        (close-port port)
+        (with-final (close port) (proc port))
         (string-concatenate-reverse out))
 
       (with-test-prefix id
-        (pass-if-log-matches
-         "make"
-         (('result #t))
-         (output-port? (make-port
-                       "hey"
-                       (log-calls 'write)
-                       (log-calls 'get-position)
-                       (log-calls 'set-position)
-                       (log-calls 'close)))))
+        (let ((port (make-port "hey"
+                               (log-calls 'write)
+                               (log-calls 'get-position)
+                               (log-calls 'set-position)
+                               (log-calls 'close))))
+          (with-final
+           (close port)
+           (pass-if-log-matches "make" (('result #t)) (output-port? port)))))
+      (pass-if-equal '((close)) log)
+      (clear-log!)
 
       (with-test-prefix id
         (pass-if-log-matches

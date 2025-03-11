@@ -98,6 +98,24 @@ else
   AC_MSG_RESULT([no])
 fi
 
+# https://lintian.debian.org/tags/no-code-sections.html
+if test "$LTO_CFLAGS"; then
+  if ! test "$LTO_CFLAGS" = -flto; then # currently expected below
+    AC_MSG_ERROR([LTO_CFLAGS wasn't just -flto])
+  fi
+  AC_MSG_CHECKING([whether the compiler supports -ffat-lto-objects])
+  old_CFLAGS="$CFLAGS"
+  LTO_CFLAGS="-flto -ffat-lto-objects"
+  CFLAGS="$CFLAGS $LTO_CFLAGS"
+  AC_LINK_IFELSE([AC_LANG_PROGRAM([int foo;], [])],, [LTO_CFLAGS=-flto])
+  CFLAGS="$old_CFLAGS"
+  if test -n "$LTO_CFLAGS"; then
+    AC_MSG_RESULT([yes])
+  else
+    AC_MSG_RESULT([no])
+  fi
+fi
+
 AC_ARG_ENABLE(lto,
   [AS_HELP_STRING([--enable-lto]
                   [enable link-time optimization for libguile])],

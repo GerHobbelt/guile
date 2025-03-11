@@ -536,10 +536,10 @@ AC_DEFUN([GUILE_ENABLE_JIT], [
   JIT_AVAILABLE=no
   AC_MSG_CHECKING([if JIT code generation supported for target CPU])
   case "$target_cpu" in
-    i?86|x86_64|amd64)    JIT_AVAILABLE=yes ;;
-    *arm*)                JIT_AVAILABLE=yes ;;
-    aarch64)              JIT_AVAILABLE=yes ;;
-    *)                                      ;;
+    i?86|x86_64|amd64|riscv64)    JIT_AVAILABLE=yes ;;
+    *arm*)                        JIT_AVAILABLE=yes ;;
+    aarch64)                      JIT_AVAILABLE=yes ;;
+    *)                                              ;;
   esac
   AC_MSG_RESULT($JIT_AVAILABLE)
 
