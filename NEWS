@@ -14,11 +14,36 @@ Changes in 3.0.11 (since 3.0.10)
 ** The SRFI-64 module for test suites has been rewritten
 
 A new, backward-compatible implementation of (srfi srfi-64) has been
-contributed by Tomas Wolf.  The reference implementation, which was used
+contributed by Tomas Volf.  The reference implementation, which was used
 so far, had a number of issues on Guile that made some of its interface
 downright unusable (e.g., <https://bugs.gnu.org/72378>), non-conforming
 (e.g., <https://bugs.gnu.org/72383>), or buggy (e.g.,
 <https://bugs.gnu.org/72372>).
+
+* New interfaces and functionality
+
+** PEG parser
+
+PEG grammar parser in (ice-9 peg string-peg) has been rewritten to cover
+all the functionality defined in <https://bford.info/pub/lang/peg.pdf>.
+
+The 'not-in-range' pattern was also added to (ice-9 peg); it is
+available from PEG strings via '[^...]'.
+
+** GOOPS: Introduce new forms method* and define-method*
+
+The module (oop goops) now exports method* and define-method* which are
+the counterparts of lambda* and define* in they provide support for
+advanced argument handling such as optional and keyword arguments. The
+implementation fully supports (next-method) calls, also for keyword
+arguments. The new syntax is documented in the Guile Reference manual.
+
+** New line or field iteration procedures in (ice-9 rdelim)
+
+(ice-9 rdelim) has three new procedures: for-rdelim-from-port,
+for-delimited-from-port and for-line-in-file. Of these, for-line-in-file
+is helpful in the common situation where you want a procedure applied to
+every line in a file.
 
 * Changes to the distribution
 
@@ -41,6 +66,9 @@ downright unusable (e.g., <https://bugs.gnu.org/72378>), non-conforming
    (<https://bugs.gnu.org/72547>)
 ** Fix compilation with GCC 14 and musl on 32-bit systems
    (<https://bugs.gnu.org/73835>)
+** Immutable stringbufs are now 8-byte aligned on all systems
+   Previously they could end up with an alignment that violated the type
+   tag for their type (e.g. ending up tagged as immediates SCM_IMP()).
 
 
 Changes in 3.0.10 (since 3.0.9)
