@@ -1,4 +1,7 @@
+;;;; srfi-207.test --- SRFI 207 test suite    -*- scheme -*-
+
 ;;; Copyright (C) 2020 Wolfgang Corcoran-Mathe
+;;; Copyright (C) 2025 Free Software Foundation, Inc.
 ;;;
 ;;; Permission is hereby granted, free of charge, to any person obtaining a
 ;;; copy of this software and associated documentation files (the
@@ -19,63 +22,65 @@
 ;;; TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 ;;; SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-(import (scheme base))
-(import (scheme write))
-(import (srfi 207))
-(import (only (srfi 1) list-tabulate every))
+(define-module (srfi-207-test)
+  #:use-module ((srfi srfi-1) #:select (every list-tabulate))
+  #:use-module ((srfi srfi-207)
+                #:select (base64->bytevector
+                          bytestring
+                          bytestring->list
+                          bytestring-break
+                          bytestring-error?
+                          bytestring-index
+                          bytestring-index-right
+                          bytestring-join
+                          bytestring-pad
+                          bytestring-pad-right
+                          bytestring-replace
+                          bytestring-span
+                          bytestring-split
+                          bytestring-trim
+                          bytestring-trim-both
+                          bytestring-trim-right
+                          bytestring<=?
+                          bytestring<?
+                          bytestring>=?
+                          bytestring>?
+                          bytevector->base64
+                          bytevector->hex-string
+                          hex-string->bytevector
+                          make-bytestring
+                          make-bytestring!
+                          make-bytestring-generator
+                          read-textual-bytestring
+                          write-binary-bytestring
+                          write-textual-bytestring))
+  #:use-module ((srfi srfi-34) #:select (guard))
+  #:use-module ((test-suite lib)
+                #:select (pass-if-equal pass-if-exception with-test-prefix))
+  #:use-module ((scheme base)
+                #:select (bytevector
+                          bytevector-length
+                          bytevector-u8-ref
+                          get-output-bytevector
+                          make-bytevector
+                          open-output-bytevector
+                          utf8->string)))
 
-(cond-expand
-  ((library (srfi 158))
-   (import (only (srfi 158) generator->list)))
-  (else
-   (begin
-    (define (generator->list gen)
-      (let rec ((x (gen)))
-        (if (eof-object? x)
-            '()
-            (cons x (rec (gen)))))))))
+;; No srfi-158
+(define (generator->list gen)
+  (let rec ((x (gen)))
+    (if (eof-object? x)
+        '()
+        (cons x (rec (gen))))))
 
-(cond-expand
-  ((library (srfi 78))
-   (import (srfi 78)))
-  (else
-    (begin
-      (define *tests-failed* 0)
-      (define-syntax check
-        (syntax-rules (=>)
-          ((check expr => expected)
-           (if (equal? expr expected)
-             (begin
-               (display 'expr)
-               (display " => ")
-               (display expected)
-               (display " ; correct")
-               (newline))
-             (begin
-               (set! *tests-failed* (+ *tests-failed* 1))
-               (display "FAILED: for ")
-               (display 'expr)
-               (display " expected ")
-               (display expected)
-               (display " but got ")
-               (display expr)
-               (newline))))))
-      (define (check-report)
-        (if (zero? *tests-failed*)
-            (begin
-             (display "All tests passed.")
-             (newline))
-            (begin
-             (display "TESTS FAILED: ")
-             (display *tests-failed*)
-             (newline)))))))
+(define-syntax check
+  (syntax-rules (=>)
+    ((check expr => expected)
+     (pass-if-equal expected expr))))
 
 ;;;; Utility
 
-(define (print-header message)
-  (newline)
-  (display (string-append ";;; " message))
-  (newline))
+(define (print-header message) #t)
 
 (define-syntax constantly
   (syntax-rules ()
@@ -96,7 +101,9 @@
   (syntax-rules ()
    ((_ expr)
     (guard (condition ((bytestring-error? condition) 'bytestring-error)
-                      (else #f))
+                      (else
+                       (format (current-error-port) "exception: ~s\n" condition)
+                       #f))
       expr))))
 
 ;; Testing shorthand for write-binary-bytestring.
@@ -128,16 +135,19 @@
 (define test-bstring (bytestring "lorem"))
 
 (define homer
-  (bytestring "The Man, O Muse, informe, who many a way / \
-               Wound in his wisedome to his wished stay;"))
+  (bytestring
+   (string-append "The Man, O Muse, informe, who many a way / "
+                  "Wound in his wisedome to his wished stay;")))
 
 (define homer64
-  "VGhlIE1hbiwgTyBNdXNlLCBpbmZvcm1lLCB3aG8gbWFueSBhIHdheSAvIFdvd\
-   W5kIGluIGhpcyB3aXNlZG9tZSB0byBoaXMgd2lzaGVkIHN0YXk7")
+  (string-append
+   "VGhlIE1hbiwgTyBNdXNlLCBpbmZvcm1lLCB3aG8gbWFueSBhIHdheSAvIFdvd"
+   "W5kIGluIGhpcyB3aXNlZG9tZSB0byBoaXMgd2lzaGVkIHN0YXk7"))
 
 (define homer64-w
-  "VGhlIE1hb iwgTyBNdXNlL CBpbmZvcm1lL\nCB3aG8gbWF\tueSBhIH\rdheSAvIFdvd\
-   W5kIGluI   GhpcyB    3aXNlZ\t\t\nG9tZSB0b    yBoaXMgd\t2lzaGVkIHN0YXk7")
+  (string-append
+   "VGhlIE1hb iwgTyBNdXNlL CBpbmZvcm1lL\nCB3aG8gbWF\tueSBhIH\rdheSAvIFdvd"
+   "W5kIGluI   GhpcyB    3aXNlZ\t\t\nG9tZSB0b    yBoaXMgd\t2lzaGVkIHN0YXk7"))
 
 ;;;; Constructors
 
@@ -169,14 +179,14 @@
   (check (bytevector->base64 test-bstring)             => "bG9yZW0=")
   (check (bytevector->base64 #u8(#xff #xef #xff))      => "/+//")
   (check (bytevector->base64 #u8(#xff #xef #xff) "*@") => "@*@@")
-  (check (equal? (bytevector->base64 homer) homer64)   => #t)
+  (check (bytevector->base64 homer)                    => homer64)
   (check (bytevector->base64 #u8(1))                   => "AQ==")
   (check (bytevector->base64 #u8())                    => "")
   (check (base64->bytevector "bG9yZW0=")               => test-bstring)
   (check (base64->bytevector "/+//")                   => #u8(#xff #xef #xff))
   (check (base64->bytevector "@*@@" "*@")              => #u8(#xff #xef #xff))
-  (check (equal? (base64->bytevector homer64) homer)   => #t)
-  (check (equal? (base64->bytevector homer64-w) homer) => #t)
+  (check (base64->bytevector homer64)                  => homer)
+  (check (base64->bytevector homer64-w)                => homer)
   (check (base64->bytevector "AQ==")                   => #u8(1))
   (check (base64->bytevector "")                       => #u8())
   (check (base64->bytevector "\n\n\n==\t\r\n")         => #u8())
@@ -215,8 +225,7 @@
   (check (catch-bytestring-error (make-bytestring-generator "λ" #\m #\u))
    => 'bytestring-error)
   (check (catch-bytestring-error (make-bytestring-generator 89 90 300))
-   => 'bytestring-error)
-)
+   => 'bytestring-error))
 
 (define (check-selection)
   (print-header "Running selection tests...")
@@ -268,8 +277,7 @@
     (check (bytestring-replace bv1 bv2 2 2 0 5) => (bytestring "food food")))
   (let ((bv1 (bytestring "food food")))
     (check (bytestring-replace bv1 (bytevector) 2 7 0 0)
-     => (bytestring "food")))
-)
+     => (bytestring "food"))))
 
 (define (check-comparison)
   (define short-bstring (bytestring "lore"))
@@ -292,8 +300,7 @@
   (check (bytestring>=? test-bstring short-bstring)      => #t)
   (check (bytestring>=? test-bstring mixed-case-bstring) => #t)
   (check (bytestring>=? mixed-case-bstring test-bstring) => #f)
-  (check (bytestring>=? short-bstring test-bstring)      => #f)
-)
+  (check (bytestring>=? short-bstring test-bstring)      => #f))
 
 (define (check-searching)
   (define (eq-r? b) (= b #x72))
@@ -425,8 +432,7 @@
      (every (lambda (bvec)
               (equal? bvec (parse-SNB/prefix (%bytestring->SNB bvec))))
             test-bstrings)
-    => #t))
-)
+    => #t)))
 
 (define (check-all)
   (check-constructor)
@@ -436,9 +442,6 @@
   (check-comparison)
   (check-searching)
   (check-join-and-split)
-  (check-io)
-
-  (newline)
-  (check-report))
+  (check-io))
 
 (check-all)

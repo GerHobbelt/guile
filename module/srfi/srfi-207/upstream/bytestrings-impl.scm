@@ -120,20 +120,21 @@
                     (integer->hex-string (bytevector-u8-ref bv i))))))
 
 (define (hex-string->bytevector hex-str)
-  (assume (string? hex-str))
-  (let ((len (string-length hex-str)))
-    (unless (even? len)
+  (unless (string? hex-str)
+    (bytestring-error "invalid hex-str argument" hex-str))
+  (let ((sn (string-length hex-str)))
+    (unless (even? sn)
       (bytestring-error "incomplete hexadecimal string" hex-str))
-    (u8vector-unfold
-     (lambda (_ i)
-       (let* ((end (+ i 2))
-              (s (substring hex-str i end))
-              (n (string->number s 16)))
-         (if n
-             (values n end)
-             (bytestring-error "invalid hexadecimal sequence" s))))
-     (truncate-quotient len 2)
-     0)))
+    (let* ((result (make-bytevector (/ sn 2))))
+      (do ((si 0 (+ si 2))
+           (vi 0 (1+ vi)))
+          ((= si sn) result)
+        (let* ((s (substring hex-str si (+ si 2)))
+               (n (string->number s 16)))
+          (unless n
+            (bytestring-error "invalid hexadecimal sequence in hex-str"
+                              s hex-str))
+          (bytevector-u8-set! result vi n))))))
 
 (define bytevector->base64
   (case-lambda
@@ -176,26 +177,36 @@
              (lambda (i) (+ i 1))
              start))))
 
-;; Lazily generate the bytestring constructed from objs.
-(define (make-bytestring-generator . objs)
-  (list->generator (flatten-bytestring-segments objs)))
-
-;; Convert and flatten chars and strings, and flatten bytevectors
-;; to yield a flat list of bytes.
-(define (flatten-bytestring-segments objs)
-  (fold-right
-   (lambda (x res)
-     (cond ((and (exact-natural? x) (< x 256)) (cons x res))
-           ((and (char? x) (char<=? x #\delete))
-            (cons (char->integer x) res))
+(define (make-bytestring-generator . args)
+  "Return a thunk that returns the consecutive bytes, one per
+invocation, of the bytevector that (apply bytestring args) would
+produce. The elements of args are validated before
+make-bytestring-generator returns, and if invalid, an error satisfying
+bytestring-error? is raised."
+  (define (generate)
+    (if (null? args)
+        (eof-object)
+        (let ((x (car args)))
+          (cond
+           ((integer? x)
+            (set! args (cdr args))
+            x)
+           ((char? x)
+            (set! args (cdr args))
+            (char->integer x))
            ((bytevector? x)
-            (append (bytevector->u8-list x) res))
-           ((string-ascii? x)
-            (append (map char->integer (string->list x)) res))
+            (set! args (append! (bytevector->u8-list x) (cdr args)))
+            (generate))
+           ((string? x)
+            (set! args (append! (string->list x) (cdr args)))
+            (generate))
            (else
-            (bytestring-error "invalid bytestring segment" x))))
-   '()
-   objs))
+            (bytestring-error "invalid bytestring segment" x))))))
+  (for-each (λ (arg)
+              (or (valid-bytestring-segment? arg)
+                  (bytestring-error "invalid bytestring segment" arg)))
+            args)
+  generate)
 
 ;;;; Selection
 
@@ -475,19 +486,19 @@
    ((bstring port)
     (parameterize ((current-output-port port))
       (write-string "#u8\"")
-      (u8vector-for-each
-       (lambda (b)
-         (cond ((assv b backslash-codepoints) =>
-                (lambda (p)
-                  (write-char #\\)
-                  (write-char (cdr p))))
-               ((and (>= b #x20) (<= b #x7e))
-                (write-char (integer->char b)))
-               (else
-                (write-string "\\x")
-                (write-string (number->string b 16))
-                (write-char #\;))))
-       bstring)
+      (do ((i 0 (1+ i)))
+          ((= i (bytevector-length bstring)))
+        (let ((b (bytevector-u8-ref bstring i)))
+          (cond ((assv b backslash-codepoints) =>
+                 (lambda (p)
+                   (write-char #\\)
+                   (write-char (cdr p))))
+                ((and (>= b #x20) (<= b #x7e))
+                 (write-char (integer->char b)))
+                (else
+                 (write-string "\\x")
+                 (write-string (number->string b 16))
+                 (write-char #\;)))))
       (write-char #\")))))
 
 (define (write-binary-bytestring port . args)
