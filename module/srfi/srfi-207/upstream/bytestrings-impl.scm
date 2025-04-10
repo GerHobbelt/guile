@@ -51,20 +51,6 @@
 
 ;;;; Constructors
 
-(define (make-bytestring lis)
-  (assume (or (pair? lis) (null? lis)))
-  (call-with-port
-   (open-output-bytevector)
-   (lambda (out)
-     (for-each (lambda (seg) (%write-bytestring-segment seg out)) lis)
-     (get-output-bytevector out))))
-
-(define (make-bytestring! bvec at lis)
-  (assume (bytevector? bvec))
-  (assume (and (exact-natural? at)
-               (< at (bytevector-length bvec))))
-  (bytevector-copy! bvec at (make-bytestring lis)))
-
 (define (%write-bytestring-segment obj port)
   ((cond ((and (exact-natural? obj) (< obj 256)) write-u8)
          ((and (char? obj) (char<=? obj #\delete)) write-char-binary)

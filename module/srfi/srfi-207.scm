@@ -30,8 +30,7 @@
                           make-exception-with-irritants))
   #:use-module ((rnrs arithmetic bitwise) #:select (bitwise-and bitwise-ior))
   #:use-module ((rnrs bytevectors)
-                #:select (bytevector->u8-list u8-list->bytevector))
-  #:use-module ((rnrs io ports) #:select (string->bytevector))
+                #:select (bytevector->u8-list string->utf8 u8-list->bytevector))
   #:use-module ((scheme base)
                 #:select (binary-port?
                           bytevector
@@ -104,6 +103,45 @@
 
 (include-from-path "srfi/srfi-207/upstream/base64.scm")
 (include-from-path "srfi/srfi-207/upstream/bytestrings-impl.scm")
+
+(define (make-bytestring! bvec at parts)
+  (let lp ((parts parts)
+           (i at))
+    (unless (null? parts)
+      (let ((x (car parts)))
+        (cond
+         ((and (exact-natural? x) (< x 256))
+          (bytevector-u8-set! bvec i x)
+          (lp (cdr parts) (1+ i)))
+         ((and (char? x) (char<=? x #\delete))
+          (bytevector-u8-set! bvec i (char->integer x))
+          (lp (cdr parts) (1+ i)))
+         ((bytevector? x)
+          (bytevector-copy! bvec i x 0 (bytevector-length x))
+          (lp (cdr parts) (+ i (bytevector-length x))))
+         ((string? x)
+          (let ((n (string-length x))
+                (utf8 (string->utf8 x)))
+            (unless (= n (bytevector-length utf8))
+              (bytestring-error "bytestring string part is not ASCII" x))
+            (bytevector-copy! bvec i utf8 0 n)
+            (lp (cdr parts) (+ i (string-length x)))))
+         (else
+          (bytestring-error "invalid bytestring string part" x)))))))
+
+(define (make-bytestring parts)
+  (define (byte-len x)
+    (cond
+     ((and (integer? x) (<= 0 x 255)) 1)
+     ((and (char? x) (char<=? #\delete)) 1)
+     ((bytevector? x) (bytevector-length x))
+     ((and (string? x) (string-every char-set:ascii x)) (string-length x))
+     (else (bytestring-error "invalid bytestring argument" x))))
+  (let* ((n (fold (λ (part total) (+ total (byte-len part)))
+                  0 parts))
+         (result (make-bytevector n)))
+    (make-bytestring! result 0 parts)
+    result))
 
 (define (read-bytestring-content port)
   ;; Must use port, not (peek)/(next).
