@@ -90,6 +90,9 @@ scm_t_option scm_read_opts[] =
       "Support SRFI-105 curly infix expressions."},
     { SCM_OPTION_BOOLEAN, "r7rs-symbols", 0,
       "Support R7RS |...| symbol notation."},
+    { SCM_OPTION_BOOLEAN, "bytestrings", 0,
+    "Read bytestrings (SRFI 207), "
+    "e.g. #u8\"\\xe2;\\x88;\\x9e; Improbability\"." },
     { 0, },
   };
  

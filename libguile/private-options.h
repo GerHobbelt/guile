@@ -64,7 +64,7 @@ SCM_INTERNAL scm_t_option scm_read_opts[];
 #define SCM_HUNGRY_EOL_ESCAPES_P scm_read_opts[5].val
 #define SCM_CURLY_INFIX_P      scm_read_opts[6].val
 #define SCM_R7RS_SYMBOLS_P     scm_read_opts[7].val
-
-#define SCM_N_READ_OPTIONS 8
+#define SCM_READ_BYTESTRINGS_P scm_read_opts[8].val
+#define SCM_N_READ_OPTIONS 9
 
 #endif  /* PRIVATE_OPTIONS */ 

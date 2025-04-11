@@ -23,6 +23,7 @@
 ;;; SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 (define-module (srfi-207-test)
+  #:use-module ((rnrs bytevectors) #:select (string->utf8 u8-list->bytevector))
   #:use-module ((srfi srfi-1) #:select (every list-tabulate))
   #:use-module ((srfi srfi-207)
                 #:select (base64->bytevector
@@ -56,7 +57,10 @@
                           write-textual-bytestring))
   #:use-module ((srfi srfi-34) #:select (guard))
   #:use-module ((test-suite lib)
-                #:select (pass-if-equal pass-if-exception with-test-prefix))
+                #:select (exception:read-error
+                          pass-if-equal
+                          pass-if-exception
+                          with-test-prefix))
   #:use-module ((scheme base)
                 #:select (bytevector
                           bytevector-length
@@ -434,6 +438,7 @@
             test-bstrings)
     => #t)))
 
+;; All the reference implementation tests
 (define (check-all)
   (check-constructor)
   (check-conversion)
@@ -445,3 +450,41 @@
   (check-io))
 
 (check-all)
+
+(let ((all-decoded (u8-list->bytevector (iota 256))))
+
+  (define (hex-esc i) (format #f "\\x~x;" i))
+  (define (hex-escs start end)
+    (string-concatenate (map hex-esc (iota (1+ (- end start)) start))))
+  (define (ascii start end)
+    (list->string (map integer->char (iota (1+ (- end start)) start))))
+  (define all-encoded
+    (string-append "#u8\""
+                   (hex-escs 0 6)
+                   "\\a\\b\\t\\n\\xb;\\xc;\\r"
+                   (hex-escs 14 31)
+                   " !"
+                   "\\\""
+                   (ascii 35 91)
+                   "\\\\"
+                   (ascii 93 123)
+                   "\\|"
+                   (ascii 125 126)
+                   (hex-escs 127 255)
+                   "\""))
+  (define (read-with-bytestrings-enabled s)
+    (call-with-input-string s
+      (λ (port)
+        (let ((keep (memq 'bytestrings (read-options))))
+          (dynamic-wind (λ () (read-enable 'bytestrings))
+              (λ () (read port))
+              (λ () (unless keep (read-disable 'bytestrings))))))))
+
+  (pass-if-exception "reading when not enabled" exception:read-error
+    (call-with-input-string "#u8\"\\xe2;\\x88;\\x9e; Improbability\"" read))
+  (pass-if-equal "reading when enabled"
+      (string->utf8 "∞ Improbability")
+    (read-with-bytestrings-enabled "#u8\"\\xe2;\\x88;\\x9e; Improbability\""))
+  (pass-if-equal "reading all encodings"
+      all-decoded
+    (read-with-bytestrings-enabled all-encoded)))

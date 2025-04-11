@@ -7426,6 +7426,8 @@ bytestrings and bytevectors are exactly the same type.
 @cindex bytestring notation
 
 The basic form of a string-notated bytevector is @code{#u8"CONTENT"}.
+The Scheme reader will read them if bytestrings are enabled via
+@code{(read-enable 'bytestrings)}.
 
 To avoid character encoding issues within string-notated bytevectors,
 only printable ASCII characters (that is, Unicode codepoints in the
