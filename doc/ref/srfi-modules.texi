@@ -5,6 +5,8 @@
 @c Copyright (C) 2005-2006 Per Bothner
 @c See the file guile.texi for copying conditions.
 
+@c REVIEW: include &bytestring-error in public docs/api?
+
 @node SRFI Support
 @section SRFI Support Modules
 @cindex SRFI
@@ -68,6 +70,7 @@ get the relevant SRFI documents from the SRFI home page
 * SRFI-119::                    Wisp: simpler indentation-sensitive Scheme.
 * SRFI-171::                    Transducers
 * SRFI-197::                    Pipeline operators
+* SRFI-207::                    String-notated bytevectors
 @end menu
 
 
@@ -7368,6 +7371,502 @@ original implementation of Clojure threading macros, and to Paulus
 Esterhazy for the (EPL licensed) threading macros documentation page,
 which was a source of inspiration and some of the examples in this
 document.
+
+
+@node SRFI-207
+@subsection SRFI-207 String-notated bytevectors
+@cindex SRFI-207
+@cindex keyword objects
+
+@uref{http://srfi.schemers.org/srfi-207/srfi-207.html, SRFI-207}
+provides a more human-friendly representation for binary-data via an
+ASCII text notation for @pxref{Bytevectors}.  It also provides
+bytestring-oriented procedures for constructing bytevectors from
+sequences of integers, characters, strings, and other bytevectors, and
+procedures for manipulating bytevectors as if they were strings.
+
+Binary file formats are usually not self-describing, and if they are,
+the descriptive portion is itself binary, which makes it hard for human
+beings to interpret.  To assist with this problem, it is common to have
+a human-readable section at the beginning of the file, or in some cases
+at the beginning of each distinct section of the file.  For historical
+reasons and to avoid text encoding complications, it is usual for this
+human-readable section to be expressed as ASCII text.
+
+For example, ZIP files begin with the hex bytes @code{50 4B} which are
+the ASCII encoding for the characters "PK", the initials of Phil Katz,
+the inventor of ZIP format.  As another example, the GIF image format
+begins with @code{47 49 46 38 39 61}, the ASCII encoding for "GIF89a",
+where "89a" is the format version.  A third example is the PNG image
+format, where the file header begins @code{89 50 4E 47}.  The first byte
+is intentionally non-ASCII, but the next three are "PNG".  Furthermore,
+a PNG file is divided into chunks, each of which contains a 4-byte
+"chunk type" code. The letters in the chunk type are mnemonics for its
+purpose, such as "PLTE" for a palette, "bKGD" for a default background
+color, and "iTXt" for descriptive text in UTF-8.
+
+When bytevectors contain string data of this kind, it is much more
+tractable for human programmers to deal with
+@code{#u8"\x89;PNG\r\n\x1A;\n"} rather than @code{#u8(0x89 0x50 0x4E
+0x47 0x0D 0x0A 0x1A 0x0A)}.
+
+In addition, this SRFI provides bytevectors with additional procedures
+that closely resemble those provided for strings. For example,
+bytevectors can be padded or trimmed, compared case-sensitively or
+case-insensitively, searched, joined, and split.
+
+Most of the procedures of this SRFI begin with @code{bytestring-} in
+order to distinguish them from other bytevector procedures.  This does
+not mean that they accept or return a separate bytestring type:
+bytestrings and bytevectors are exactly the same type.
+
+
+@node SRFI-207 External Notation
+@subsubsection External Notation
+@cindex bytestring notation
+
+The basic form of a string-notated bytevector is @code{#u8"CONTENT"}.
+
+To avoid character encoding issues within string-notated bytevectors,
+only printable ASCII characters (that is, Unicode codepoints in the
+range from U+0020 to U+007E inclusive) are allowed to be used within the
+@var{CONTENT} of a string-notated bytevector. All other characters must
+be expressed through mnemonic or inline hex escapes, and @code{"} and
+@code{\} must also be escaped as in normal Scheme strings.
+
+Within the @var{CONTENT} of a string-notated bytevector:
+
+@itemize @bullet
+  @item
+  @code{\a} @result{} 7
+  @item
+  @code{\b} @result{} 8
+  @item
+  @code{\t} @result{} 9
+  @item
+  @code{\n} @result{} 10
+  @item
+  @code{\r} @result{} 13
+  @item
+  @code{\"} @result{} 34
+  @item
+  @code{\\} @result{} 92
+  @item
+  @code{\|} @result{} 124
+@item
+the sequence @code{\x} followed by zero or more @code{0} characters,
+followed by one or two hexadecimal digits, followed by @code{;}
+represents the integer specified by the hexadecimal digits;
+@item
+the sequence @code{\} followed by zero or more intraline whitespace
+characters, followed by a newline, followed by zero or more further
+intraline whitespace characters, is ignored and corresponds to no entry
+in the resulting bytevector;
+@item
+any other printable ASCII character represents the character number of
+that character in the ASCII/Unicode code chart; and
+@item
+it is an error to use any other character or sequence beginning with
+@code{\} within a string-notated bytevector.
+@end itemize
+
+Note: The @code{\|} sequence is provided so that string parsing, symbol
+parsing, and string-notated bytevector parsing can all use the same
+sequences.  However, we give a complete definition of the valid lexical
+syntax in this SRFI rather than inheriting the native syntax of strings,
+so that it is clear that @code{#u8"&iota;"} and @code{#u8"\xE000;"} are
+invalid.
+
+When the Scheme reader encounters a string-notated bytevector, it
+produces a datum as if that bytevector had been written out in
+full. That is, @code{#u8"A"} is exactly equivalent to @code{#u8(65)}.
+
+
+@node SRFI-207 Contructors
+@subsubsection Constructors
+@cindex bytestring constructors
+
+@deffn {Scheme Procedure} bytestring part @dots{}
+Converts earch @var{part} into a sequence of small integers and returns
+a bytevector of the corresponding bytes as follows:
+@itemize
+@item
+If @var{part} is an exact integer in the range 0-255 inclusive, it is
+added to the result.
+@item
+If @var{part} is an ASCII character (that is, its codepoint is in the
+range 0-127 inclusive), it is converted to its codepoint and added to
+the result.
+@item
+If @var{part} is a bytevector, its elements are added to the result.
+@item
+If @var{part} is a string of ASCII characters, it is converted to a
+sequence of codepoints which are added to the result.
+@end itemize
+
+Otherwise, an error satisfying @code{bytestring-error?} is signaled, for
+example:
+
+@example
+(bytestring "lo" #\r #x65 #u8(#x6d)) @result{} #u8"lorem"
+@end example
+
+@example
+(bytestring "η" #\space #u8(#x65 #x71 #x75 #x69 #x76))
+@result{} raised &bytestring-error
+@end example
+
+@end deffn
+
+@deffn {Scheme Procedure} make-bytestring parts
+If the @var{parts} are suitable arguments for @code{bytestring}, returns
+the bytevector that would result from applying @code{bytestring} to
+them.  Otherwise, an error satisfying @code{bytestring-error?} is
+raised.
+@end deffn
+
+@deffn {Scheme Procedure} make-bytestring! bytevector at parts
+If the @var{parts} are suitable arguments for @code{bytestring}, writes
+the bytes of the bytevector that would be the result of calling
+@code{make-bytestring} into @var{bytevector} starting at index
+@var{at}.  For example:
+
+@example
+(define bv (make-bytevector 10 #x20))
+(make-bytestring! bv 2 '(#\s #\c "he" #u8(#x6d #x65))) bv)
+@result{} #u8" scheme "
+@end example
+@end deffn
+
+
+@node SRFI-207 Conversion
+@subsubsection Conversion
+@cindex bytestring conversion
+
+@deffn {Scheme Procedure} bytevector->hex-string bytevector
+@deffnx {Scheme Procedure} hex-string->bytevecto string
+Converts between a bytevector and a string containing pairs of
+hexadecimal digits.  If @var{string} is not pairs of hexadecimal digits,
+an error satisfying @code{bytestring-error?} is raised
+
+@example
+@code{(bytevector->hex-string #u8"Ford")} @result{} @code{"467f7264"}
+@code{(hex-string->bytevector "5a6170686f64")} @result{} @code{#u8"Zaphod")}
+@end example
+@end deffn
+
+@deffn {Scheme Procedure} bytevector->base64 bytevector [digits]
+@deffnx {Scheme Procedure} base64->bytevecto string [digits]
+Converts between a bytevector and its base-64 encoding as a string. The
+64 digits are represented by the characters 0-9, A-Z, a-z, and the
+symbols + and /. However, there are different variants of base-64
+encoding which use different representations of the 62nd and 63rd
+digit. If the optional argument @var{digits} (a two-character string) is
+provided, those two characters will be used as the 62nd and 63rd digit
+instead. Details can be found in
+@url{https://tools.ietf.org/html/rfc4648, RFC 4648}.
+
+If @var{string} is not in base-64 format, an error satisfying
+@code{bytestring-error?}  is raised.  However, characters that satisfy
+@code{char-whitespace?}  are silently ignored.
+
+@example
+@code{(bytevector->base64 #u8(1 2 3 4 5 6))} @result{} @result{} @code{"AQIDBAUG"}
+@code{(bytevector->base64 #u8"Arthur Dent")} @result{} @code{"QXJ0aHVyIERlbnQ="}
+@code{(base64->bytevector "+/     /+")} @result{} @code{#u8(#xfb #xff #xfe)}
+@end example
+@end deffn
+
+@deffn {Scheme Procedure} bytestring->list bytevector [start [end]]
+Converts all or part of a bytevector into a list of the same length
+containing characters for elements in the range 32 to 127 and exact
+integers for all other elements.</p>
+
+@example
+@code{(bytestring->list #u8(#x41 #x42 1 2) 1 3)} @result{} @code{(#\B 1)}
+@end example
+@end deffn
+
+@deffn {Scheme Procedure} make-bytestring-generator arg @dots{}
+Returns a generator that when invoked will return consecutive bytes of
+the bytevector that @code{bytestring} would create when applied to
+@var{args}, but without creating any bytevectors.  The @var{args} are
+validated before any bytes are generated; if they are ill-formed, an
+error satisfying @code{bytestring-error?} is raised.
+
+@example
+@code{(generator->list (make-bytestring-generator "lorem"))}
+@result{} @code{(#x6c #x6f #x72 #x65 #x6d)}
+@end example
+@end deffn
+
+
+@node SRFI-207 Selection
+@subsubsection Selection
+@cindex bytestring selection
+
+@deffn {Scheme Procedure} bytestring-pad bytevector len char-or-u8
+@deffnx {Scheme Procedure} bytestring-pad-right bytevector len char-or-u8
+Returns a newly allocated bytevector with the contents of
+@var{bytevector} plus sufficient additional bytes at the beginning/end
+containing @var{char-or-u8} (which can be either an ASCII character or
+an exact integer in the range 0-255) such that the length of the result
+is at least @var{len}.
+
+@example
+@code{(bytestring-pad #u8"Zaphod" 10 #\_)} @result{} @code{#u8"____Zaphod"}
+@code{(bytestring-pad-right #u8(#x80 #x7f) 8 0)} @result{} @code{#u8(#x80 #x7f 0 0 0 0 0 0)}
+@end example
+@end deffn
+
+
+@deffn {Scheme Procedure} bytestring-trim bytevector pred
+@deffnx {Scheme Procedure} bytestring-trim-right bytevector pred
+@deffnx {Scheme Procedure} bytestring-trim-both bytevector pred
+Returns a newly allocated bytevector with the contents of
+@var{bytevector}, except that consecutive bytes at the beginning / the
+end / both the beginning and the end that satisfy @var{pred} are not
+included.
+
+@example
+@code{(bytestring-trim #u8"   Trillian" (lambda (b) (= b #x20)))}
+@result{} @code{#u8"Trillian"}
+@code{(bytestring-trim-both #u8(0 0 #x80 #x7f 0 0 0) zero?)} @result{} @code{#u8(#x80 #x7f)}
+@end example
+@end deffn
+
+
+@node SRFI-207 Replacement
+@subsubsection Replacement
+@cindex bytestring replacement
+
+@deffn {Scheme Procedure} bytestring-replace bytevector1 bytevector2 start1 end1 [start2 end2]
+Returns a newly allocated bytevector with the contents of
+@var{bytevector1}, except that the bytes indexed by @var{start1} and
+@var{end1} are not included but are replaced by the bytes of
+@var{bytevector2} indexed by @var{start2} and @var{end2}.
+
+@example
+@code{(bytestring-replace #u8"Vogon torture" #u8"poetry" 6 13)}
+@result{} @code{#u8"Vogon poetry"}
+@end example
+@end deffn
+
+
+@node SRFI-207 Comparison
+@subsubsection Comparison
+@cindex bytestring comparison
+
+To compare bytevectors for equality, use the @code{bytevector=?}
+procedure from @code{(rnrs bytevectors)} (@pxref{Bytevectors}) or
+@code{equal?}.
+
+@deffn {Scheme Procedure} bytestring<? bytevector1 bytevector2
+@deffnx {Scheme Procedure} bytestring>? bytevector1 bytevector2
+@deffnx {Scheme Procedure} bytestring<=? bytevector1 bytevector2
+@deffnx {Scheme Procedure} bytestring>=? bytevector1 bytevector2
+Returns @code{#t} if @var{bytevector1} is less than / greater than /
+less than or equal to / greater than or equal to
+@var{bytevector2}. Comparisons are lexicographical: shorter bytevectors
+compare before longer ones, all elements being equal.
+
+@example
+@code{(bytestring<? #u8"Heart Of Gold" #u8"Heart of Gold")} @result{} @code{#t}
+@code{(bytestring<=? #u8(#x81 #x95) #u8(#x80 #xa0))} @result{} @code{#f}
+@code{(bytestring>? #u8(1 2 3) #u8(1 2))} @result{} @code{#t}
+@end example
+@end deffn
+
+
+@node SRFI-207 Searching
+@subsubsection Searching
+@cindex bytestring searching
+
+@deffn {Scheme Procedure} bytestring-index bytevector pred [start [end]]
+@deffnx {Scheme Procedure} bytestring-index-right bytevector pred [start [end]]
+Searches @var{bytevector} from @var{start} to @var{end} / from
+@var{end} to @var{start} for the first byte that satisfies @var{pred},
+and returns the index into @var{bytevector} containing that byte. In
+either direction, @var{start} is inclusive and @var{end} is
+exclusive. If there are no such bytes, returns @code{#f}.
+
+@example
+@code{(bytestring-index #u8(#x65 #x72 #x83 #x6f) (λ (b) (> b #x7f)))} @result{} @code{2}
+@code{(bytestring-index #u8"Beeblebrox" (λ (b) (> b #x7f)))} @result{} @code{#f}
+@code{(bytestring-index-right #u8"Zaphod" odd?)} @result{} @code{4}
+@end example
+@end deffn
+
+@deffn {Scheme Procedure} bytestring-break bytevector pred
+@deffnx {Scheme Procedure} bytestring-span bytevector pred
+Returns two values, a bytevector containing the maximal sequence of
+characters (searching from the beginning of @var{bytevector} to the end)
+that do not satisfy / do satisfy @var{pred}, and another bytevector
+containing the remaining characters.
+
+@example
+@code{(bytestring-break #u8(#x50 #x4b 0 0 #x1 #x5) zero?)}
+  @result{} @code{#u8(#x50 #x4b)} @code{#u8(0 0 #x1 #x5)}
+@code{(bytestring-span #u8"ABCDefg" (lambda (b) (and (> b 40) (< b 91))))}
+  @result{} @code{#u8"ABCD"} @code{#u8"efg"}
+@end example
+@end deffn
+
+
+@node SRFI-207 Joining And Splitting
+@subsubsection Joining And Splitting
+@cindex bytestring joining and splitting
+
+@deffn {Scheme Procedure} bytestring-join bytevector-list delimiter
+Joins the bytevectors in @var{bytevector-list} together using the
+@var{delimiter}, which can be anything suitable as an argument to
+@code{bytestring}.  The @var{grammar} argument is a symbol that
+determines how the delimiter is used, and defaults to @code{infix}. It
+is an error for grammar to be any symbol other than these four:
+
+@table @code
+@item infix
+means an infix or separator grammar: inserts the delimiter between list
+elements. An empty list will produce an empty bytevector
+@item strict-infix
+means the same as @code{infix} if the list is non-empty, but will signal
+an error satisfying @code{bytestring-error?} if given an empty
+list.
+@item suffix
+means a suffix or terminator grammar: inserts the delimiter after every list element.
+@item prefix
+means a prefix grammar: inserts the delimiter before every list element.
+@end table
+
+For example:
+@example
+@code{(bytestring-join '(#u8"Heart" #u8"of" #u8"Gold") #x20)}
+  @result{} @code{#u8"Heart of Gold"}
+@code{(bytestring-join '(#u8(#xef #xbb) #u8(#xbf)) 0 'prefix)}
+  @result{} @code{#u8(0 #xef #xbb 0 #xbf)}
+@code{(bytestring-join '() 0 'strict-infix)}
+  @result{} @result{} raised @code{&bytestring-error}
+@end example
+@end deffn
+
+@deffn {Scheme Procedure} bytestring-split bytevector delimiter [grammar]
+Divides the elements of @var{bytevector} and returns a list of newly
+allocated bytevectors using the @var{delimiter} (an ASCII character or
+exact integer in the range 0-255 inclusive). Delimiter bytes are not
+included in the result bytevectors.
+
+The @var{grammar} argument is used to control how @var{bytevector} is
+divided. It has the same default and meaning as in
+@code{bytestring-join}, except that @code{infix} and @code{strict-infix}
+mean the same thing. That is, if @var{grammar} is @code{prefix} or
+@code{suffix}, then ignore any delimiter in the first or last position
+of @var{bytevector} respectively.
+
+@example
+@code{(bytestring-split #u8"Beeblebrox" #x62)}
+  @result{} @code{(#u8"Bee" #u8"le" #u8"rox")}
+@code{(bytestring-split #u8(1 0 2 0) 0 'suffix)}
+  @result{} @code{(#u8(1) #u8(2))}
+@end example
+@end deffn
+
+
+@node SRFI-207 I/O
+@subsubsection I/O
+@cindex bytestring I/O
+
+@deffn {Scheme Procedure} read-textual-bytestring prefix [port]
+Reads a string in the external format described in this SRFI from
+@var{port} and return it as a bytevector.  If the @var{prefix} argument
+is false, this procedure assumes that "@code{#u8}" has already been read
+from @var{port}.  If @var{port} is omitted, it defaults to the value of
+@code{(current-input-port)}.  If the characters read are not in the
+external format, an error satisfying @code{bytestring-error?} is raised.
+
+@example scheme
+(call-with-port
+    (open-input-string "#u8\"AB\\xad;\\xf0;\\x0d;CD\"")
+  (lambda (port) (read-textual-bytestring #t port)))
+@result{} #u8(#x41 #x42 #xad #xf0 #x0d #x43 #x44)
+@end example
+@end deffn
+
+@deffn {Scheme Procedure} write-textual-bytestring bytevector [port]
+Writes @var{bytevector} in the external format described in this SRFI to
+@var{port}.  Bytes representing non-graphical ASCII characters are
+unencoded: all other bytes are encoded with a single letter if possible,
+otherwise with a @code{\x} escape.  If @var{port} is omitted, it
+defaults to the value of @code{(current-output-port)}.
+
+@example scheme
+(call-with-port
+    (open-output-string)
+  (lambda (port)
+    (write-textual-bytestring
+     #u8(#x9 #x41 #x72 #x74 #x68 #x75 #x72 #xa)
+     port)
+    (get-output-string port)))
+@result{} "#u8\"\\tArthur\\n\""
+@end example
+@end deffn
+
+@deffn {Scheme Procedure} write-binary-bytestring port arg @dots{}
+Outputs each @var{arg} to the binary output port @var{port} using the
+same interpretations as @code{bytestring}, but without creating any
+bytevectors.  The @var{args} are validated before any bytes are written
+to @var{port}; if they are ill-formed, an error satisfying
+@code{bytestring-error?} is raised.
+
+@example scheme
+(call-with-port
+    (open-output-bytevector)
+  (lambda (port)
+    (write-binary-bytestring port #\Z #x61 #x70 "hod")
+    (get-output-bytevector port)))
+@result{} #u8"Zaphod"
+@end example
+@end deffn
+
+
+@node SRFI-207 Exceptions
+@subsubsection Exceptions
+@cindex bytestring exceptions
+
+@deffn {Scheme Procedure} bytestring-error? obj
+Returns @code{#t} if @var{obj} is a @code{&bytestring-error} signaled by
+any of the following procedures, in the circumstances they describe:
+
+@itemize @w{}
+@item @code{bytestring}
+@item @code{hex-string->bytestring}
+@item @code{base64->bytestring}
+@item @code{make-bytestring}
+@item @code{make-bytestring!}
+@item @code{bytestring-join}
+@item @code{read-textual-bytestring}
+@item @code{write-binary-bytestring}
+@item @code{make-bytestring-generator}
+@end itemize
+@end deffn
+
+@node SRFI-207 Acknowledgements
+@subsubsection Acknowledgements
+@cindex bytestring acknowledgements
+
+Daphne Preston-Kendal devised the string notation for bytevectors; John
+Cowan, the procedure library; Wolfgang Corcoran-Mathe, the original,
+sample implementation of the procedures.
+
+The notation is inspired by the notation used in Python since version
+2.6 for @code{bytes} objects, which are fundamentally similar in purpose
+to Scheme bytevectors, especially in R7RS. In addition, many of the
+procedures are closely analogous to those of
+@url{https://srfi.schemers.org/srfi-152/srfi-152.html, SRFI 152}.
+
+Thanks is also due to the participants in the SRFI mailing list. In
+particular: Lassi Kortela corrected an embarrassing technical error;
+Marc Nieper-Wißkirchen explained why the @code{write} procedure ought
+not to be allowed to use this notation by default.
 
 @c srfi-modules.texi ends here
 
