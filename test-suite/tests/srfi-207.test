@@ -479,6 +479,13 @@
           (dynamic-wind (λ () (read-enable 'bytestrings))
               (λ () (read port))
               (λ () (unless keep (read-disable 'bytestrings))))))))
+  (define (captured-bytestring-output f)
+    (call-with-output-string
+        (λ (port)
+          (let ((keep (memq 'bytestrings (print-options))))
+            (dynamic-wind (λ () (print-enable 'bytestrings))
+                (λ () (f port))
+                (λ () (unless keep (print-disable 'bytestrings))))))))
 
   (pass-if-exception "reading when not enabled" exception:read-error
     (call-with-input-string "#u8\"\\xe2;\\x88;\\x9e; Improbability\"" read))
@@ -487,4 +494,17 @@
     (read-with-bytestrings-enabled "#u8\"\\xe2;\\x88;\\x9e; Improbability\""))
   (pass-if-equal "reading all encodings"
       all-decoded
-    (read-with-bytestrings-enabled all-encoded)))
+    (read-with-bytestrings-enabled all-encoded))
+
+  (pass-if-equal "writing when not enabled"
+      "#vu8(226 136 158 32 73 109 112 114 111 98 97 98 105 108 105 116 121)"
+    (call-with-output-string
+          (λ (port) (write (string->utf8 "∞ Improbability") port))))
+  (pass-if-equal "writing when enabled"
+      "#u8\"\\xe2;\\x88;\\x9e; Improbability\""
+    (captured-bytestring-output
+     (λ (port) (write (string->utf8 "∞ Improbability") port))))
+  (pass-if-equal "writing all encodings"
+      all-encoded
+    (captured-bytestring-output
+     (λ (port) (write (u8-list->bytevector (iota 256)) port)))))
