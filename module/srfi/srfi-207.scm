@@ -110,7 +110,7 @@
     (unless (null? parts)
       (let ((x (car parts)))
         (cond
-         ((and (exact-natural? x) (< x 256))
+         ((and (exact-integer? x) (<= 0 x 255))
           (bytevector-u8-set! bvec i x)
           (lp (cdr parts) (1+ i)))
          ((and (char? x) (char<=? x #\delete))
