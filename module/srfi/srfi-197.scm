@@ -1,3 +1,5 @@
+;;;; srfi-197.scm --- SRFI 197: Pipeline Operators
+
 ;;;; SPDX-FileCopyrightText: 2020 Adam R. Nelson <adam@nels.onl>
 ;;;;
 ;;;; SPDX-License-Identifier: MIT
@@ -26,9 +28,19 @@
 ;;;; CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ;;;; SOFTWARE.
 
-; A syntax-case implementation of SRFI 197.
-; This should be functionally equivalent to srfi-197.scm,
-; but it may be easier to read and understand.
+;;; Commentary:
+;;;
+;;; This is an implementation of SRFI 197: Pipeline Operators taken from
+;;; the reference implementation's srfi-197-syntax-case.scm.
+;;;
+;;; Code:
+
+(define-module (srfi srfi-197)
+  #:use-module ((scheme base) #:select (eof-object let-values))
+  #:use-module (srfi srfi-2)
+  #:export (chain chain-and chain-lambda chain-when nest nest-reverse))
+
+(cond-expand-provide (current-module) '(srfi-197))
 
 (define (gentemp) (car (generate-temporaries '(x))))
 

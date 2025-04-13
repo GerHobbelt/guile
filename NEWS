@@ -22,6 +22,11 @@ downright unusable (e.g., <https://bugs.gnu.org/72378>), non-conforming
 
 * New interfaces and functionality
 
+** Guile now supports SRFI-197 (Pipeline Operators)
+
+Guile now provides chain, chain-and, chain-when, chain-lambda, nest, and
+nest-reverse.
+
 ** PEG parser
 
 PEG grammar parser in (ice-9 peg string-peg) has been rewritten to cover

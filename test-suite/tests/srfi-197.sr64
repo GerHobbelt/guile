@@ -1,3 +1,5 @@
+;;;; srfi-197.sr64 --- SRFI 197: Pipeline Operators test suite
+;;;;
 ;;;; SPDX-FileCopyrightText: 2020 Adam R. Nelson <adam@nels.onl>
 ;;;;
 ;;;; SPDX-License-Identifier: MIT
@@ -26,7 +28,16 @@
 ;;;; CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ;;;; SOFTWARE.
 
-(include "./srfi-64-minimal.scm")
+;;; Commentary:
+
+;;; The Copyright statement above was taken from the srfi-197.html file
+;;; in the original source.
+
+;;; Code:
+
+(define-module (srfi-197-test)
+  #:use-module (srfi srfi-64)
+  #:use-module (srfi srfi-197))
 
 (define (exclamation x) (string-append x "!"))
 
@@ -236,3 +247,7 @@
                 (quote <>)))
 
 (test-end "Pipeline Operators")
+
+;; Local Variables:
+;; mode: scheme
+;; End:
