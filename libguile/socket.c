@@ -1,4 +1,4 @@
-/* Copyright 1996-1998,2000-2007,2009,2011-2015,2018,2021,2022
+/* Copyright 1996-1998,2000-2007,2009,2011-2015,2018,2021,2022,2025
      Free Software Foundation, Inc.
 
    This file is part of Guile.
@@ -454,6 +454,7 @@ typedef union
 #endif
   size_t size;
   int    integer;
+  struct timeval timeval;
 } scm_t_getsockopt_result;
 
 SCM_DEFINE (scm_getsockopt, "getsockopt", 3, 0, 0,

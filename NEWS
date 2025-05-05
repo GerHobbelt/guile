@@ -96,6 +96,8 @@ every line in a file.
 ** r6rs-ports.test custom ports tests should no longer fail on stray closes
    Previously the custom ports weren't explicitly closed, causing
    GC-related closes to produce spurious "log" events in other tests.
+** getsockopt no longer risks a buffer overrun with timestamps
+   (<https://bugs.gnu.org/76907>)
 
 
 Changes in 3.0.10 (since 3.0.9)
