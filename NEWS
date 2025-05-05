@@ -45,7 +45,16 @@ for-delimited-from-port and for-line-in-file. Of these, for-line-in-file
 is helpful in the common situation where you want a procedure applied to
 every line in a file.
 
+* Performance improvements
+
+** `copy-file` now relies on `sendfile` rather than a read/write loop
+
 * Changes to the distribution
+
+* Build system changes
+
+** -Werror=array-bounds is now added to CFLAGS when available
+   This catches <https://bugs.gnu.org/76907>
 
 * Bug fixes
 

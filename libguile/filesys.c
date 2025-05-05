@@ -1,7 +1,7 @@
 /* Copyright 1996-2002,2004,2006,2009-2019,2021
      Free Software Foundation, Inc.
    Copyright 2021 Maxime Devos <maximedevos@telenet.be>
-   Copyright 2024 Tomas Volf <~@wolfsden.cz>
+   Copyright 2024, 2025 Tomas Volf <~@wolfsden.cz>
 
    This file is part of Guile.
 
@@ -1306,10 +1306,9 @@ SCM_DEFINE (scm_copy_file2, "copy-file", 2, 0, 1,
 {
   char *c_oldfile, *c_newfile;
   int oldfd, newfd;
-  int n, rv;
+  int rv;
   SCM cow = sym_auto;
   int clone_res;
-  char buf[BUFSIZ];
   struct stat_or_stat64 oldstat;
 
   scm_dynwind_begin (0);
@@ -1354,13 +1353,18 @@ SCM_DEFINE (scm_copy_file2, "copy-file", 2, 0, 1,
     scm_syserror ("copy-file: copy-on-write failed");
 
   if (clone_res)
-    while ((n = read (oldfd, buf, sizeof buf)) > 0)
-      if (write (newfd, buf, n) != n)
-        {
-          close (oldfd);
-          close (newfd);
-          SCM_SYSERROR;
-        }
+    {
+      off_t end;
+      if ((end = lseek_or_lseek64 (oldfd, 0, SEEK_END)) < 0)
+        SCM_SYSERROR;
+      if (lseek_or_lseek64 (oldfd, 0, SEEK_SET) < 0)
+        SCM_SYSERROR;
+
+      scm_sendfile (scm_from_int (newfd),
+                    scm_from_int (oldfd),
+                    scm_from_off_t (end),
+                    SCM_UNDEFINED);
+    }
   close (oldfd);
   if (close (newfd) == -1)
     SCM_SYSERROR;

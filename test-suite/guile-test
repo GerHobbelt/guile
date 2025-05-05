@@ -92,7 +92,11 @@
   :use-module (system vm vm)
   #:declarative? #f
   :use-module ((test-suite lib automake) :prefix automake/)
-  :export (main data-file-name test-file-name))
+  :export (call-with-temp-dir
+           data-file-name
+           exception-errno
+           main
+           test-file-name))
 
 
 ;;; User configurable settings:
@@ -110,6 +114,21 @@
 
 
 ;;; General utilities, that probably should be in a library somewhere.
+
+(define-syntax-rule (call-with-temp-dir template f)
+  "Call (f tempdir) with a temporary directory created by (mkdtemp
+template) that is always removed on exit from f."
+  (let ((tmpdir (mkdtemp template)))
+    (dynamic-wind
+      (const #f)
+      (λ () (f tmpdir))
+      (λ ()
+        (unless (zero? (status:exit-val (system* "rm" "-rf" tmpdir)))
+          (error "Unable to remove temporary directory: " tmpdir))))))
+
+(define (exception-errno ex)
+  "Return the errno value from the system-error derived &exception ex."
+  (car (list-ref (exception-args ex) 3)))
 
 ;;; Enable debugging
 (define (enable-debug-mode)

@@ -1523,8 +1523,8 @@ piped_process (pid_t *pid, SCM prog, SCM args, SCM from, SCM to)
 #define FUNC_NAME "piped-process"
 {
   int reading, writing;
-  int c2p[2]; /* Child to parent.  */
-  int p2c[2]; /* Parent to child.  */
+  int c2p[2] = {0, 0}; /* Child to parent.  */
+  int p2c[2] = {0, 0}; /* Parent to child.  */
   int in = -1, out = -1, err = -1;
   char *exec_file;
   char **exec_argv;

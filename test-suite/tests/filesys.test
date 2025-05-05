@@ -44,6 +44,33 @@
 
 (with-test-prefix "copy-file"
 
+  (with-test-prefix "missing source"
+    (with-exception-handler
+        (λ (ex) (pass-if-equal "errno is ENOENT" ENOENT (exception-errno ex)))
+      (λ () (copy-file "this-file-should-not-exist" "somewhere"))
+      #:unwind? #t))
+
+  (call-with-temp-dir
+   "copy-file-XXXXXX"
+   (λ (tmpdir)
+     (let ((msg "this is a test, this is only a test...\n")
+           (src (string-append tmpdir "/" "source"))
+           (dest (string-append tmpdir "/" "read-only-dest")))
+       (call-with-output-file src (λ (p) (display msg p)))
+       (call-with-output-file dest identity)
+       (with-test-prefix "successful copy"
+         (copy-file src dest)
+         (pass-if-equal "copy-file dest content" msg
+           (call-with-input-file dest get-string-all)))
+       (unless (zero? (geteuid))
+         (with-test-prefix "read only dest"
+           (chmod dest #o444)
+           (with-exception-handler
+               (λ (ex)
+                 (pass-if-equal "errno is EACCES" EACCES (exception-errno ex)))
+             (λ () (copy-file src dest))
+             #:unwind? #t))))))
+
   ;; return next prospective file descriptor number
   (define (next-fd)
     (let ((fd (dup 0)))

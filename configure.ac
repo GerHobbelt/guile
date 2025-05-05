@@ -62,6 +62,14 @@ AC_PROG_INSTALL
 AC_PROG_CC
 gl_EARLY
 
+AC_MSG_CHECKING([whether the compiler supports -Werror=array-bounds])
+old_CFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -Werror=array-bounds"
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([int foo;], [])],
+  [AC_MSG_RESULT([yes])],
+  [AC_MSG_RESULT([no])
+   CFLAGS="$old_CFLAGS"])
+
 AC_MSG_CHECKING([whether the compiler supports -fexcess-precision=standard])
 old_CFLAGS="$CFLAGS"
 CFLAGS="$CFLAGS -fexcess-precision=standard"
