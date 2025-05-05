@@ -774,7 +774,7 @@ libpath.h: $(srcdir)/Makefile.in  $(top_builddir)/config.status
 	@echo '	{ "LIBS",	   "@GUILE_LIBS@" }, \' >> libpath.tmp
 	@echo '	{ "CFLAGS",	   "@GUILE_CFLAGS@" }, \' >> libpath.tmp
 	@BUILD_DATE="$${SOURCE_DATE_EPOCH:-`date '+%s'`}" ; \
-	 echo '	{ "buildstamp",    "'`date -u +'%Y-%m-%d %T' -d @$$BUILD_DATE`'" }, \' >> libpath.tmp
+	 echo '	{ "buildstamp",    "'`date -u -d @$$BUILD_DATE +'%Y-%m-%d %T'`'" }, \' >> libpath.tmp
 	@echo '}' >> libpath.tmp
 	$(AM_V_GEN)mv libpath.tmp libpath.h
 else
@@ -817,7 +817,7 @@ libpath.h: $(srcdir)/Makefile.in  $(top_builddir)/config.status
 	@echo '	{ "LIBS",	   "@GUILE_LIBS@" }, \' >> libpath.tmp
 	@echo '	{ "CFLAGS",	   "@GUILE_CFLAGS@" }, \' >> libpath.tmp
 	@BUILD_DATE="$${SOURCE_DATE_EPOCH:-`date '+%s'`}" ; \
-	 echo '	{ "buildstamp",    "'`date -u +'%Y-%m-%d %T' -d @$$BUILD_DATE`'" }, \' >> libpath.tmp
+	 echo '	{ "buildstamp",    "'`date -u -d @$$BUILD_DATE +'%Y-%m-%d %T'`'" }, \' >> libpath.tmp
 	@echo '}' >> libpath.tmp
 	$(AM_V_GEN)mv libpath.tmp libpath.h
 endif

@@ -327,7 +327,15 @@ spawn_finalizer_thread (void)
   start_finalization_thread ();
 }
 
-#endif /* SCM_USE_PTHREAD_THREADS */
+#else /* !SCM_USE_PTHREAD_THREADS */
+
+int
+scm_i_is_finalizer_thread (struct scm_thread *t)
+{
+  return 0;
+}
+
+#endif /* !SCM_USE_PTHREAD_THREADS */
 
 
 

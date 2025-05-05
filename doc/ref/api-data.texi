@@ -7676,8 +7676,8 @@ row-major order, but that might change in the future. Use
 
 @deffn {Scheme Procedure} make-shared-array oldarray mapfunc bound @dots{}
 @deffnx {C Function} scm_make_shared_array (oldarray, mapfunc, boundlist)
-Return a new array which shares the storage of @var{oldarray}.
-Changes made through either affect the same underlying storage.  The
+Return a new array which shares the storage of @var{oldarray}.  Changes
+made through either array affect the same underlying storage.  The
 @var{bound} @dots{} arguments are the shape of the new array, the same
 as @code{make-array} (@pxref{Array Procedures}).
 
