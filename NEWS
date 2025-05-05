@@ -45,6 +45,21 @@ for-delimited-from-port and for-line-in-file. Of these, for-line-in-file
 is helpful in the common situation where you want a procedure applied to
 every line in a file.
 
+** Improve 'load-foreign-library' handling of DLLs
+
+The non-libltdl load-foreign-library introduced in 3.0.6 does not handle
+some common cases with libtool-generated DLLs.  It has been updated
+to search for DLLs that have a version number appended to the name
+by libtool, such as libfoo-1.dll.
+
+Also, it has been updated to do library renaming for MSYS.  On Cygwin,
+when the #:rename-on-cygwin? option is #t, it already had the capability
+to search for "libfoo" as "cygfoo.dll".  It has been updated to add the
+capability to search for "libfoo" as "msys-foo.dll" on MSYS.
+
+The load-foreign-library option #:rename-on-cygwin? has been changed to
+#:host-type-rename?, and handles both Cygwin and MSYS.
+
 * Performance improvements
 
 ** `copy-file` now relies on `sendfile` rather than a read/write loop

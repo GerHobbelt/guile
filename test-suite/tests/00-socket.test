@@ -29,6 +29,12 @@
   (when (string-ci=? "darwin" (utsname:sysname (uname)))
     (throw 'untested)))
 
+(define (skip-on-cygwin-msys)
+  (when (or (string-contains %host-type "cygwin")
+            (string-contains %host-type "msys"))
+    ;; See https://cygwin.com/pipermail/cygwin/2023-June/253785.html
+    (throw 'unsupported)))
+
 
 
 ;;;
@@ -341,6 +347,7 @@
 
 	(pass-if "bind abstract"
           (skip-on-darwin)
+          (skip-on-cygwin-msys)
 	  (catch 'system-error
 	    (lambda ()
 	      (bind server-socket AF_UNIX path)
