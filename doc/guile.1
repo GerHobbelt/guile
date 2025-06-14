@@ -1,5 +1,5 @@
 .\" Written by Robert Merkel (rgmerk@mira.net)
-.\" augmented by Rob Browning <rlb@cs.utexas.edu>
+.\" augmented by Rob Browning <rlb@defaultvalue.org>
 .\" Process this file with
 .\" groff -man -Tascii foo.1
 .\"
@@ -55,12 +55,21 @@ Please consult the Guile info documentation for more information,
 .
 .SH OPTIONS
 .TP
-.BI -L \ DIRECTORY
-Add \fIDIRECTORY\fR to the front of Guile's module load path.
+.BI \-L \ DIRECTORY
+Add \fIDIRECTORY\fR to the front of Guile's module load path.  The given
+directories are searched in the order given on the command line and
+before any directories in the \fBGUILE_LOAD_PATH\fR environment
+variable.  Paths added here are not in effect during execution of
+the user's \fI~/.guile\fR file.
 .
 .TP
-.BI -l \ FILE
-Load Scheme source code from \fIFILE\fR.
+.BI \-C \ DIRECTORY
+Like \fB\-L\fR, but adjusts the load path for compiled files.
+.
+.TP
+.BI \-l \ FILE
+Load Scheme source code from \fIFILE\fR, and continue processing the
+command line.
 .
 .TP
 .BI -e \ FUNCTION
@@ -121,12 +130,24 @@ even if
 is being run interactively.
 .
 .TP
-.B --auto-compile
+.B \-\-auto\-compile
 Compile source files automatically (default behavior).
 .
 .TP
-.B --no-auto-compile
+.B \-\-fresh\-auto\-compile
+Treat the auto-compilation cache as invalid, forcing recompilation.
+.
+.TP
+.B \-\-no\-auto\-compile
 Disable automatic source file compilation.
+.
+.TP
+.BI \-\-language \ LANG
+For the remainder of the command line arguments, assume that files
+mentioned with \fB\-l\fR and expressions passed with \fB\-c\fR are
+written in \fILANG\fR, which must be the name of one of the languages
+supported by the compiler.  When run interactively, set the REPL's
+language to \fILANG\fR.
 .
 .TP
 \fB\-\-listen\fR[=\fIP\fR]
@@ -138,6 +159,12 @@ See the manual for more details.
 Load SRFI extensions \fIN\fR, \fIM\fR, etc.
 For example,
 \fB \-\-use\-srfi\fR=\fI8,13\fR.
+.
+.TP
+\fB\-\-r6rs\fR, \fB\-\-r7rs\fR
+Adapt Guile's initial environment to better support R6RS or R7RS. See
+"R6RS Incompatibilities" and "R7RS Incompatibilities" in the info pages
+for some caveats.
 .
 .TP
 .BI -x \ EXTENSION
@@ -231,7 +258,7 @@ so it is in your interest to report them in such a way that they can be
 easily reproduced.
 .
 .SH COPYING
-Copyright (C) 2010, 2011 Free Software Foundation, Inc.
+Copyright (C) 2010, 2011, 2025 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of this
 document provided the copyright notice and this permission notice are
@@ -250,7 +277,7 @@ translation approved by the Free Software Foundation.
 .
 .SH AUTHORS
 Robert Merkel <rgmerk@mira.net> wrote this manpage.
-Rob Browning <rlb@cs.utexas.edu> has added to it.
+Rob Browning <rlb@defaultvalue.org> has added to it.
 
 .B guile
 is GNU software.
