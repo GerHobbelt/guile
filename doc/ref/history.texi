@@ -251,6 +251,7 @@ application that you use and that you know well, think of something
 that it can't yet do, and figure out a way to integrate Guile and
 implement that task in Guile.
 
+@cindex ice-9, meaning
 With time, perhaps this exposure can reverse itself, whereby programs
 can run under Guile instead of vice versa, eventually resulting in the
 Emacsification of the entire GNU system. Indeed, this is the reason
