@@ -9,6 +9,16 @@ Changes in 3.0.11 (since 3.0.10)
 
 * Notable changes
 
+** Guile supports SRFI-207: String notated bytevectors (bytestrings)
+
+Guile can now read and write #u8"\xe2;\x88;\x9e; Improbability\n" style
+bytestrings when they are enabled by `(read-enable 'bytestrings)` and
+`(print-enable 'bytestrings)` respectively. See "SRFI-207 String-notated
+bytevectors" in the info pages for additional information.
+
+All of the SRFI-207 procedures have also been added, including support
+for hex and base64 encoding and decoding.
+
 ** R7RS `cond-expand` now supports `else` (<https://debbugs.gnu.org/71304>)
 
 ** The SRFI-64 module for test suites has been rewritten
