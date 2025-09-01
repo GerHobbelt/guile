@@ -204,6 +204,7 @@ change.
    (<https://bugs.gnu.org/72547>)
 ** A numer of test incompatibilities with Darwin hosts have been fixed.
    (<https://bugs.gnu.org/72547>)
+** define guile-test as non-declarative because it uses load.
 
 
 Changes in 3.0.10 (since 3.0.9)
