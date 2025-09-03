@@ -286,6 +286,11 @@ test_pthread_create_secondary_LDADD = $(LIBGUILE_LDADD) $(top_builddir)/lib/libg
 check_PROGRAMS += test-pthread-create-secondary
 TESTS += test-pthread-create-secondary
 
+test_concurrent_init_CFLAGS = ${test_cflags}
+test_concurrent_init_LDADD = $(LIBGUILE_LDADD) $(top_builddir)/lib/libgnu.la
+check_PROGRAMS += test-concurrent-init
+TESTS += test-concurrent-init
+
 else
 
 EXTRA_DIST += test-with-guile-module.c test-scm-with-guile.c
