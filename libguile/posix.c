@@ -1825,7 +1825,10 @@ SCM_DEFINE (scm_tmpfile, "tmpfile", 0, 0, 0,
     SCM_SYSERROR;
 
 #ifndef __MINGW32__
-  fd = dup (fileno (rv));
+  /* Use F_DUPFD_CLOEXEC to preserve the tmpfile descriptor's O_CLOEXEC
+     flag so that children can't prevent the file from being removed
+     when this process terminates. */
+  fd = fcntl (fileno (rv), F_DUPFD_CLOEXEC, 0);
   fclose (rv);
 #else
   fd = fileno (rv);
