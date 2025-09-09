@@ -199,12 +199,12 @@ change.
    (<https://bugs.gnu.org/26121>)
 ** A C23 incompatibility in libguile/jit.c has been fixed
 ** 'readlink' on Darwin hosts now handles ports correctly
-** 'pipe' on Darwin hosts now reports 'ENOSYS' when flags are provided.
+** 'pipe' on Darwin hosts now reports 'ENOSYS' when flags are provided
    Previously that provoked a 'system-error' with a zero errno value.
    (<https://bugs.gnu.org/72547>)
-** A numer of test incompatibilities with Darwin hosts have been fixed.
+** A numer of test incompatibilities with Darwin hosts have been fixed
    (<https://bugs.gnu.org/72547>)
-** define guile-test as non-declarative because it uses load.
+** define guile-test as non-declarative because it uses load
 
 
 Changes in 3.0.10 (since 3.0.9)
