@@ -362,7 +362,7 @@ scm_c_make_structv (SCM vtable, size_t n_tail, size_t n_init, scm_t_bits *init)
      initialization, to humor GOOPS, so only validate if the layout was
      passed as an initarg. */
   if (SCM_VTABLE_FLAG_IS_SET (vtable, SCM_VTABLE_FLAG_VTABLE)
-      && scm_is_true (SCM_VTABLE_LAYOUT (obj)))
+      && scm_is_symbol (SCM_VTABLE_LAYOUT (obj)))
     scm_i_struct_inherit_vtable_magic (vtable, obj);
 
   return obj;
