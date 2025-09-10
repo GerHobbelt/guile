@@ -118,7 +118,7 @@
                  (if (and (>= b #x20) (< b #x7f))
                      (integer->char b)
                      b)))
-             (lambda (i) (+ i 1))
+             1+
              start))))
 
 (define (make-bytestring-generator . args)
@@ -248,7 +248,7 @@ bytestring-error? is raised."
 (define (%bytestring-prefix-length bstring1 bstring2)
   (let ((end (min (bytevector-length bstring1)
                   (bytevector-length bstring2))))
-    (if (eqv? bstring1 bstring2)  ; fast path
+    (if (eq? bstring1 bstring2)  ; fast path
         end
         (let lp ((i 0))
           (if (or (>= i end)
@@ -275,19 +275,19 @@ bytestring-error? is raised."
 (define (bytestring<? bstring1 bstring2)
   (assume (bytevector? bstring1))
   (assume (bytevector? bstring2))
-  (and (not (eqv? bstring1 bstring2))
+  (and (not (eq? bstring1 bstring2))
        (%bytestring-compare bstring1 bstring2 #t #f #f)))
 
 (define (bytestring>? bstring1 bstring2)
   (assume (bytevector? bstring1))
   (assume (bytevector? bstring2))
-  (and (not (eqv? bstring1 bstring2))
+  (and (not (eq? bstring1 bstring2))
        (%bytestring-compare bstring1 bstring2 #f #f #t)))
 
 (define (bytestring<=? bstring1 bstring2)
   (assume (bytevector? bstring1))
   (assume (bytevector? bstring2))
-  (or (eqv? bstring1 bstring2)
+  (or (eq? bstring1 bstring2)
       (%bytestring-compare bstring1 bstring2 #t #t #f)))
 
 (define (bytestring>=? bstring1 bstring2)
@@ -354,13 +354,13 @@ bytestring-error? is raised."
   (call-with-port
    (open-output-bytevector)
    (lambda (out)
-     (when (eqv? grammar 'prefix) (write-bytevector delimiter out))
+     (when (eq? grammar 'prefix) (write-bytevector delimiter out))
      (write-bytevector (car bstrings) out)
      (for-each (lambda (bstr)
                  (write-bytevector delimiter out)
                  (write-bytevector bstr out))
                (cdr bstrings))
-     (when (eqv? grammar 'suffix) (write-bytevector delimiter out))
+     (when (eq? grammar 'suffix) (write-bytevector delimiter out))
      (get-output-bytevector out))))
 
 (define bytestring-join
@@ -373,7 +373,7 @@ bytestring-error? is raised."
      (let ((delim-bstring (bytestring delimiter)))
        (if (pair? bstrings)
            (%bytestring-join-nonempty bstrings delim-bstring grammar)
-           (if (eqv? grammar 'strict-infix)
+           (if (eq? grammar 'strict-infix)
                (bytestring-error "empty list with strict-infix grammar")
                (bytevector)))))))
 
