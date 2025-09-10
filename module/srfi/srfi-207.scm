@@ -28,6 +28,7 @@
   #:use-module ((rnrs bytevectors)
                 #:select (bytevector->u8-list
                           bytevector-u8-ref
+                          bytevector-u8-set!
                           string->utf8
                           u8-list->bytevector))
   #:use-module ((scheme base)
@@ -119,6 +120,35 @@
    (else (bytestring common-base64-encoding
                      (string->bytevector digits "ASCII")
                      "="))))
+
+(define outside-char 99) ; luft-balloons
+(define pad-char 101)    ; dalmations
+
+(define base64-common-decode-table
+  ;; Everything except the digits
+  (let ((bv (make-bytevector 256 outside-char)))
+    (do ((i 0 (1+ i)))
+        ((= i (string-length common-base64-encoding)))
+      (let ((c (string-ref common-base64-encoding i)))
+        (bytevector-u8-set! bv (char->integer c) i)))
+    (bytevector-u8-set! bv 61 pad-char)
+    bv))
+
+(define (make-base64-decode-table digits)
+  (let ((bv (bytevector-copy base64-common-decode-table)))
+    (bytevector-u8-set! bv (char->integer (string-ref digits 0)) 62)
+    (bytevector-u8-set! bv (char->integer (string-ref digits 1)) 63)
+    bv))
+
+;; RFC 4648 sections 4 and 5
+(define standard-base64-decode-table (make-base64-decode-table "+/"))
+(define url&filename-safe-base64-decode-table (make-base64-decode-table "-_"))
+
+(define (get-base64-decode-table digits)
+  (cond
+   ((string= "+/" digits) standard-base64-decode-table)
+   ((string= "-_" digits) url&filename-safe-base64-decode-table)
+   (else (make-base64-decode-table digits))))
 
 (include-from-path "ice-9/read/bytestring.scm")
 (include-from-path "srfi/srfi-207/upstream/base64.scm")
