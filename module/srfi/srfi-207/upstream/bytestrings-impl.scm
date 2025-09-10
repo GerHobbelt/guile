@@ -84,6 +84,7 @@
     ((bvec digits)
      (assume (bytevector? bvec))
      (assume (string? digits))
+     (assume (= 2 (string-length digits)))
      (utf8->string (base64-encode-bytevector bvec digits)))))
 
 (define base64->bytevector
@@ -92,6 +93,7 @@
     ((base64-string digits)
      (assume (string? base64-string))
      (assume (string? digits))
+     (assume (= 2 (string-length digits)))
      (decode-base64-string base64-string digits))))
 
 (define bytestring->list
