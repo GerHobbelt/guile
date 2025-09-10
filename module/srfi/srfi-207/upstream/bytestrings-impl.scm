@@ -61,21 +61,6 @@
 
 ;;; Hex string conversion
 
-(define (integer->hex-string n)
-  (cond ((number->string n 16) =>
-         (lambda (res)
-           (if (even? (string-length res))
-               res
-               (string-append "0" res))))
-        (else (bytestring-error "not an integer" n))))
-
-(define (bytevector->hex-string bv)
-  (assume (bytevector? bv))
-  (string-concatenate
-   (list-tabulate (bytevector-length bv)
-                  (lambda (i)
-                    (integer->hex-string (bytevector-u8-ref bv i))))))
-
 (define (hex-string->bytevector hex-str)
   (unless (string? hex-str)
     (bytestring-error "invalid hex-str argument" hex-str))

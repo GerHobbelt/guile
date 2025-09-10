@@ -25,7 +25,10 @@
 (define-module (srfi srfi-207)
   #:use-module ((rnrs arithmetic bitwise) #:select (bitwise-and bitwise-ior))
   #:use-module ((rnrs bytevectors)
-                #:select (bytevector->u8-list string->utf8 u8-list->bytevector))
+                #:select (bytevector->u8-list
+                          bytevector-u8-ref
+                          string->utf8
+                          u8-list->bytevector))
   #:use-module ((scheme base)
                 #:select (binary-port?
                           bytevector
@@ -141,6 +144,24 @@
          (result (make-bytevector n)))
     (make-bytestring! result 0 parts)
     result))
+
+(define (bytevector->hex-string bv)
+  (assume (bytevector? bv))
+  (define (integer->hex-char n)
+    (case n
+      ((0) #\0) ((1) #\1) ((2) #\2) ((3) #\3) ((4) #\4)
+      ((5) #\5) ((6) #\6) ((7) #\7) ((8) #\8) ((9) #\9)
+      ((10) #\a) ((11) #\b) ((12) #\c) ((13) #\d) ((14) #\e) ((15) #\f)
+      (else (error "Should not be possible, half-byte out of hex range:" n))))
+  (list->string
+   (let loop ((i (1- (bytevector-length bv))) (result '()))
+     (if (= i -1)
+         result
+         (let ((b (bytevector-u8-ref bv i)))
+           (loop (1- i)
+                 (cons* (integer->hex-char (ash b -4))
+                        (integer->hex-char (logand b #x0f))
+                        result)))))))
 
 (define read-textual-bytestring
   (case-lambda
