@@ -23,6 +23,7 @@
 ;;; Code:
 
 (define-module (srfi srfi-207)
+  #:use-module ((ice-9 iconv) #:select (string->bytevector))
   #:use-module ((rnrs arithmetic bitwise) #:select (bitwise-and bitwise-ior))
   #:use-module ((rnrs bytevectors)
                 #:select (bytevector->u8-list
@@ -101,6 +102,23 @@
   (syntax-rules ()
     ((_ pred) (unless pred (error "invalid assumption:" (quote pred))))
     ((_ pred msg ...) (unless pred (error msg ...)))))
+
+(define common-base64-encoding
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+
+(define standard-base64-encode-table ; RFC 4648 section 4
+  (bytestring common-base64-encoding "+/="))
+
+(define url&filename-safe-base64-encode-table ; RFC 4648 section 5
+  (bytestring common-base64-encoding "-_="))
+
+(define (get-base64-encode-table digits)
+  (cond
+   ((string= "+/" digits) standard-base64-encode-table)
+   ((string= "-_" digits) url&filename-safe-base64-encode-table)
+   (else (bytestring common-base64-encoding
+                     (string->bytevector digits "ASCII")
+                     "="))))
 
 (include-from-path "ice-9/read/bytestring.scm")
 (include-from-path "srfi/srfi-207/upstream/base64.scm")
