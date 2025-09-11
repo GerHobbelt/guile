@@ -348,34 +348,7 @@ bytestring-error? is raised."
                    (bytevector-copy bstring len))))
         (else (values (bytevector-copy bstring) (bytevector)))))
 
-;;;; Joining & Splitting
-
-(define (%bytestring-join-nonempty bstrings delimiter grammar)
-  (call-with-port
-   (open-output-bytevector)
-   (lambda (out)
-     (when (eq? grammar 'prefix) (write-bytevector delimiter out))
-     (write-bytevector (car bstrings) out)
-     (for-each (lambda (bstr)
-                 (write-bytevector delimiter out)
-                 (write-bytevector bstr out))
-               (cdr bstrings))
-     (when (eq? grammar 'suffix) (write-bytevector delimiter out))
-     (get-output-bytevector out))))
-
-(define bytestring-join
-  (case-lambda
-    ((bstrings delimiter) (bytestring-join bstrings delimiter 'infix))
-    ((bstrings delimiter grammar)
-     (assume (or (pair? bstrings) (null? bstrings)))
-     (unless (memv grammar '(infix strict-infix prefix suffix))
-       (bytestring-error "invalid grammar" grammar))
-     (let ((delim-bstring (bytestring delimiter)))
-       (if (pair? bstrings)
-           (%bytestring-join-nonempty bstrings delim-bstring grammar)
-           (if (eq? grammar 'strict-infix)
-               (bytestring-error "empty list with strict-infix grammar")
-               (bytevector)))))))
+;;;; Splitting
 
 (define (%find-right bstring byte end)
   (bytestring-index-right bstring (lambda (b) (= b byte)) 0 end))

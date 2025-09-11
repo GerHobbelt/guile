@@ -32,7 +32,8 @@
                           string->utf8
                           u8-list->bytevector))
   #:use-module ((scheme base)
-                #:select (binary-port?
+                #:select (bytevector-append
+                          binary-port?
                           bytevector
                           bytevector-copy
                           bytevector-copy!
@@ -52,7 +53,7 @@
                           write-string
                           write-u8))
   #:use-module ((srfi srfi-1)
-                #:select (fold list-tabulate fold-right unfold unfold-right))
+                #:select (append-map! circular-list fold list-tabulate unfold))
   #:use-module ((srfi srfi-43) #:select (vector-unfold))
   #:use-module ((srfi srfi-60) #:select (arithmetic-shift bit-field))
   #:export (base64->bytevector
@@ -210,6 +211,29 @@
                  (cons* (integer->hex-char (ash b -4))
                         (integer->hex-char (logand b #x0f))
                         result)))))))
+
+(define bytestring-join
+  (case-lambda
+   ((bstrings delimiter) (bytestring-join bstrings delimiter 'infix))
+   ((bstrings delimiter grammar)
+    (assume (or (pair? bstrings) (null? bstrings)))
+    (let ((delim-bv (bytestring delimiter)))
+      (define (alternate! l1 l2) (append-map! list l1 l2))
+      (define (infix-join)
+        (if (or (null? bstrings) (null? (cdr bstrings)))
+            bstrings
+            (cons (car bstrings)
+                  (alternate! (circular-list delim-bv) (cdr bstrings)))))
+      (apply bytevector-append
+             (case grammar
+               ((infix) (infix-join))
+               ((prefix) (alternate! (circular-list delim-bv) bstrings))
+               ((suffix) (alternate! bstrings (circular-list delim-bv)))
+               ((strict-infix)
+                (when (null? bstrings)
+                  (bytestring-error "empty list with strict-infix grammar"))
+                (infix-join))
+               (else (bytestring-error "invalid grammar" grammar))))))))
 
 (define read-textual-bytestring
   (case-lambda
