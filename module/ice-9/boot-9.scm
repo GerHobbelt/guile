@@ -46,6 +46,15 @@
 
 
 
+;;; {Shared internal state}
+;;;
+;;; Avoids namespace clutter for things that currently can't go in a
+;;; module.
+
+(define %boot-9-shared-internal-state (make-hash-table))
+
+
+
 ;;; {Language primitives}
 ;;;
 
@@ -1558,6 +1567,26 @@ exception that is an instance of @var{rtd}."
     (make-exception-type '&programming-error &error '()))
   (define &non-continuable
     (make-exception-type '&non-continuable &programming-error '()))
+
+  ;; These need to be shared by read.scm, (ice-9 exceptions), and
+  ;; srfi-207, and for now, for example, we can't load exceptions here.
+  (let* ((&message (make-exception-type '&message &exception '(message)))
+         (&irritants (make-exception-type '&irritants &exception '(irritants)))
+         (&bytestring-error (make-exception-type '&bytestring-error &error '()))
+         (make-bytestring (record-constructor &bytestring-error))
+         (make-message (record-constructor &message))
+         (make-irritants (record-constructor &irritants)))
+    (define (bytestring-error message . irritants)
+      (raise-exception (make-exception (make-bytestring)
+                                       (make-message message)
+                                       (make-irritants irritants))))
+    ;; Needed by (ice-9 exceptions)
+    (hashq-set! %boot-9-shared-internal-state '&message &message)
+    (hashq-set! %boot-9-shared-internal-state '&irritants &irritants)
+    ;; Needed by srfi-207
+    (hashq-set! %boot-9-shared-internal-state '&bytestring-error &bytestring-error)
+    ;; Needed by read.scm and srfi-207
+    (hashq-set! %boot-9-shared-internal-state 'bytestring-error bytestring-error))
 
   ;; Boot definition; overridden later.
   (define-values* (make-exception-from-throw)

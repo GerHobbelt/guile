@@ -121,6 +121,9 @@ scm_t_option scm_print_opts[] = {
     "Render newlines as \\n when printing using `write'." },
   { SCM_OPTION_BOOLEAN, "r7rs-symbols", 0,
     "Escape symbols using R7RS |...| symbol notation." },
+  { SCM_OPTION_BOOLEAN, "bytestrings", 0,
+    "Render bytevectors as bytestrings (SRFI 207), "
+    "e.g. #u8\"\\xe2;\\x88;\\x9e; Improbability\"." },
   { 0 },
 };
 
