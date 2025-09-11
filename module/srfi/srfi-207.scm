@@ -151,7 +151,6 @@
    ((string= "-_" digits) url&filename-safe-base64-decode-table)
    (else (make-base64-decode-table digits))))
 
-(include-from-path "ice-9/read/bytestring.scm")
 (include-from-path "srfi/srfi-207/upstream/base64.scm")
 (include-from-path "srfi/srfi-207/upstream/bytestrings-impl.scm")
 
