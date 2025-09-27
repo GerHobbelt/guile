@@ -14550,7 +14550,7 @@
 
 	(scm_big_and):  Fix for negative first parameter.
 
-	(scm_bit_extract):  Fix for fixnum paramters.
+	(scm_bit_extract):  Fix for fixnum parameters.
 	Thanks to Rob Browning for the bug report.
 
 	(scm_init_numbers):  Initialize abs_most_negative_fixnum.

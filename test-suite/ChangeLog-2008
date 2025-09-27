@@ -2393,7 +2393,7 @@
 	This allows for arbitrarily named test directories.
 
 	(test-file-name, enumerate-tets):  Take the test directory as a
-	paramter instead of using the global variable 'test-root'.
+	parameter instead of using the global variable 'test-root'.
 
 	(main):  Handle the new command line options.  Return an exit code
 	depending on whether all tests came out as expected.
