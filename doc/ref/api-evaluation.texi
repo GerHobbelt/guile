@@ -346,6 +346,7 @@ hungry-eol-escapes no   In strings, consume leading whitespace after an
                         escaped end-of-line.
 curly-infix       no    Support SRFI-105 curly infix expressions.
 r7rs-symbols      no    Support R7RS |...| symbol notation.
+bytestrings       no    Support SRFI-207 #u8"\xce;\xbb; calculus" bytestrings
 @end smalllisp
 
 Note that Guile also includes a preliminary mechanism for setting read
@@ -498,6 +499,7 @@ escape-newlines           yes     Render newlines as \n when printing
                                   using `write'. 
 r7rs-symbols              no      Escape symbols using R7RS |...| symbol
                                   notation.
+bytestrings               no      Render bytevectors as bytestrings (SRFI-207)
 @end smalllisp
 
 These options may be modified with the print-set! syntax.

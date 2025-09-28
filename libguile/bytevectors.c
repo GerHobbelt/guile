@@ -26,6 +26,7 @@
 #include <byteswap.h>
 #include <intprops.h>
 #include <errno.h>
+#include <stdio.h>
 #include <striconveh.h>
 #include <uniconv.h>
 #include <unistr.h>
@@ -52,6 +53,7 @@
 #include "numbers.h"
 #include "pairs.h"
 #include "ports.h"
+#include "private-options.h"
 #include "srfi-4.h"
 #include "strings.h"
 #include "symbols.h"
@@ -488,8 +490,8 @@ scm_c_bytevector_set_x (SCM bv, size_t index, uint8_t value)
 
 
 
-int
-scm_i_print_bytevector (SCM bv, SCM port, scm_print_state *pstate SCM_UNUSED)
+static int
+print_bytevector (SCM bv, SCM port, scm_print_state *pstate SCM_UNUSED)
 {
   ssize_t ubnd, inc, i;
   scm_t_array_handle h;
@@ -510,6 +512,86 @@ scm_i_print_bytevector (SCM bv, SCM port, scm_print_state *pstate SCM_UNUSED)
 
   return 1;
 }
+
+
+
+static int
+print_bytestring (SCM bv, SCM port, scm_print_state *pstate SCM_UNUSED)
+{
+  assert (scm_is_bytevector (bv));
+
+  const size_t c_len = SCM_BYTEVECTOR_LENGTH (bv);
+  const uint8_t * const c_bv = (uint8_t *) SCM_BYTEVECTOR_CONTENTS (bv);
+
+  scm_puts ("#u8\"", port);
+  for (size_t i = 0; i < c_len; i++)
+    {
+      switch (c_bv[i])
+        {
+        case '\n': scm_puts("\\n", port); break;
+        case '\r': scm_puts("\\r", port); break;
+        case '"': scm_puts("\\\"", port); break;
+        case '\\': scm_puts("\\\\", port); break;
+        case '\t': scm_puts("\\t", port); break;
+        case '|': scm_puts("\\|", port); break;
+        case '\a': scm_puts("\\a", port); break;
+        case '\b': scm_puts("\\b", port); break;
+        case '\0': scm_puts("\\x0;", port); break;
+        case 0x01: scm_puts("\\x1;", port); break;
+        case 0x02: scm_puts("\\x2;", port); break;
+        case 0x03: scm_puts("\\x3;", port); break;
+        case 0x04: scm_puts("\\x4;", port); break;
+        case 0x05: scm_puts("\\x5;", port); break;
+        case 0x06: scm_puts("\\x6;", port); break;
+        case 0x0b: scm_puts("\\xb;", port); break;
+        case 0x0c: scm_puts("\\xc;", port); break;
+        case 0x0e: scm_puts("\\xe;", port); break;
+        case 0x0f: scm_puts("\\xf;", port); break;
+        case 0x10: scm_puts("\\x10;", port); break;
+        case 0x11: scm_puts("\\x11;", port); break;
+        case 0x12: scm_puts("\\x12;", port); break;
+        case 0x13: scm_puts("\\x13;", port); break;
+        case 0x14: scm_puts("\\x14;", port); break;
+        case 0x15: scm_puts("\\x15;", port); break;
+        case 0x16: scm_puts("\\x16;", port); break;
+        case 0x17: scm_puts("\\x17;", port); break;
+        case 0x18: scm_puts("\\x18;", port); break;
+        case 0x19: scm_puts("\\x19;", port); break;
+        case 0x1a: scm_puts("\\x1a;", port); break;
+        case 0x1b: scm_puts("\\x1b;", port); break;
+        case 0x1c: scm_puts("\\x1c;", port); break;
+        case 0x1d: scm_puts("\\x1d;", port); break;
+        case 0x1e: scm_puts("\\x1e;", port); break;
+        case 0x1f: scm_puts("\\x1f;", port); break;
+        default:
+          if (c_bv[i] <= 0x7e)
+            scm_putc (c_bv[i], port);
+          else
+            {
+              char digits[3];
+              const int n = snprintf(digits, 3, "%2x", c_bv[i]);
+              assert (n == 2);
+              scm_puts ("\\x", port);
+              scm_puts (digits, port);
+              scm_puts (";", port);
+            }
+        }
+    }
+  scm_putc ('"', port);
+  return 1;
+}
+
+
+
+int
+scm_i_print_bytevector (SCM bv, SCM port, scm_print_state *pstate SCM_UNUSED)
+{
+  if (!SCM_PRINT_BYTESTRINGS_P)
+    return print_bytevector(bv, port, pstate);
+  else
+    return print_bytestring(bv, port, pstate);
+}
+
 
 
 /* General operations.  */

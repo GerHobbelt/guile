@@ -21,52 +21,21 @@
 
 ;;;; Utility
 
-(define (exact-natural? x)
-  (and (exact-integer? x) (not (negative? x))))
+(define (ascii-char? x)
+  (and (char? x) (char<=? x #\delete)))
 
-(define (u8-or-ascii-char? obj)
-  (or (and (char? obj) (char<=? obj #\delete))
-      (and (exact-natural? obj) (< obj 256))))
+(define (uint8? x)
+  (and (exact-integer? x) (<= 0 x 255)))
 
 (define (string-ascii? obj)
   (and (string? obj)
        (string-every (lambda (c) (char<=? c #\delete)) obj)
        #t))
 
-(define (valid-bytestring-segment? obj)
-  (or (bytevector? obj)
-      (u8-or-ascii-char? obj)
-      (string-ascii? obj)))
-
-(define (%bytestring-null? bstring)
-  (zero? (bytevector-length bstring)))
-
-(define (%bytestring-last bstring)
-  (assume (not (%bytestring-null? bstring)) "empty bytestring")
-  (bytevector-u8-ref bstring (- (bytevector-length bstring) 1)))
-
-(define (negate pred)
-  (lambda (obj)
-    (not (pred obj))))
-
 ;;;; Constructors
 
-(define (make-bytestring lis)
-  (assume (or (pair? lis) (null? lis)))
-  (call-with-port
-   (open-output-bytevector)
-   (lambda (out)
-     (for-each (lambda (seg) (%write-bytestring-segment seg out)) lis)
-     (get-output-bytevector out))))
-
-(define (make-bytestring! bvec at lis)
-  (assume (bytevector? bvec))
-  (assume (and (exact-natural? at)
-               (< at (bytevector-length bvec))))
-  (bytevector-copy! bvec at (make-bytestring lis)))
-
 (define (%write-bytestring-segment obj port)
-  ((cond ((and (exact-natural? obj) (< obj 256)) write-u8)
+  ((cond ((and (exact-integer? obj) (<= 0 obj 255)) write-u8)
          ((and (char? obj) (char<=? obj #\delete)) write-char-binary)
          ((bytevector? obj) write-bytevector)
          ((string-ascii? obj) write-string-binary)
@@ -91,33 +60,6 @@
 ;;;; Conversion
 
 ;;; Hex string conversion
-
-;; Convert an unsigned integer n to a bytevector representing
-;; the base-256 big-endian form (the zero index holds the MSB).
-(define (integer->bytevector n)
-  (assume (and (integer? n) (not (negative? n))))
-  (if (zero? n)
-      (make-bytevector 1 0)
-      (u8-list->bytevector
-       (unfold-right zero?
-                     (lambda (n) (truncate-remainder n 256))
-                     (lambda (n) (truncate-quotient n 256))
-                     n))))
-
-(define (integer->hex-string n)
-  (cond ((number->string n 16) =>
-         (lambda (res)
-           (if (even? (string-length res))
-               res
-               (string-append "0" res))))
-        (else (bytestring-error "not an integer" n))))
-
-(define (bytevector->hex-string bv)
-  (assume (bytevector? bv))
-  (string-concatenate
-   (list-tabulate (bytevector-length bv)
-                  (lambda (i)
-                    (integer->hex-string (bytevector-u8-ref bv i))))))
 
 (define (hex-string->bytevector hex-str)
   (unless (string? hex-str)
@@ -159,11 +101,11 @@
      (bytestring->list bstring start (bytevector-length bstring)))
     ((bstring start end)
      (assume (bytevector? bstring))
-     (assume (and (exact-natural? start) (>= start 0))
+     (assume (and (exact-integer? start) (>= start 0))
              "invalid start index"
              start
              bstring)
-     (assume (and (exact-natural? end) (<= end (bytevector-length bstring)))
+     (assume (and (exact-integer? end) (<= 0 end (bytevector-length bstring)))
              "invalid end index"
              end
              bstring)
@@ -203,7 +145,10 @@ bytestring-error? is raised."
            (else
             (bytestring-error "invalid bytestring segment" x))))))
   (for-each (λ (arg)
-              (or (valid-bytestring-segment? arg)
+              (or (bytevector? arg)
+                  (ascii-char? arg)
+                  (uint8? arg)
+                  (string-ascii? arg)
                   (bytestring-error "invalid bytestring segment" arg)))
             args)
   generate)
@@ -212,8 +157,8 @@ bytestring-error? is raised."
 
 (define (%bytestring-pad-left-or-right bstring len char-or-u8 right)
   (assume (bytevector? bstring))
-  (assume (exact-natural? len))
-  (assume (u8-or-ascii-char? char-or-u8))
+  (assume (and (exact-integer? len) (not (negative? len))))
+  (assume (or (ascii-char? char-or-u8) (uint8? char-or-u8)))
   (let ((pad-len (- len (bytevector-length bstring)))
         (pad-byte (if (char? char-or-u8)
                       (char->integer char-or-u8)
@@ -272,18 +217,17 @@ bytestring-error? is raised."
     ((bstring1 bstring2 start1 end1 start2 end2)
      (assume (bytevector? bstring1))
      (assume (bytevector? bstring2))
-     (assume (and (exact-natural? start1) (>= start1 0) (<= start1 end1))
+     (assume (and (exact-integer? start1) (>= start1 0) (<= start1 end1))
              "invalid start index"
              start1)
-     (assume (and (exact-natural? end1)
-                  (<= end1 (bytevector-length bstring1)))
+     (assume (and (exact-integer? end1)
+                  (<= 0 end1 (bytevector-length bstring1)))
              "invalid end index"
              bstring1)
-     (assume (and (exact-natural? start2) (>= start2 0) (<= start2 end2))
+     (assume (and (exact-integer? start2) (>= start2 0) (<= start2 end2))
              "invalid start index"
              start2)
-     (assume (and (exact-natural? end2)
-                  (<= end2 (bytevector-length bstring2)))
+     (assume (and (exact-integer? end2) (<= 0 end2 (bytevector-length bstring2)))
              "invalid end index"
              bstring2)
      (if (and (= start1 end1) (= start2 end2))
@@ -360,8 +304,8 @@ bytestring-error? is raised."
     ((bstring pred start end)
      (assume (bytevector? bstring))
      (assume (procedure? pred))
-     (assume (exact-natural? start))
-     (assume (exact-natural? end))
+     (assume (and (exact-integer? start) (not (negative? start))))
+     (assume (and (exact-integer? end) (not (negative? end))))
      (let lp ((i start))
        (and (< i end)
             (if (pred (bytevector-u8-ref bstring i))
@@ -376,8 +320,8 @@ bytestring-error? is raised."
     ((bstring pred start end)
      (assume (bytevector? bstring))
      (assume (procedure? pred))
-     (assume (exact-natural? start))
-     (assume (exact-natural? end))
+     (assume (and (exact-integer? start) (not (negative? start))))
+     (assume (and (exact-integer? end) (not (negative? end))))
      (let lp ((i (- end 1)))
        (and (>= i start)
             (if (pred (bytevector-u8-ref bstring i))
@@ -463,10 +407,10 @@ bytestring-error? is raised."
     ((bstring delimiter) (bytestring-split bstring delimiter 'infix))
     ((bstring delimiter grammar)
      (assume (bytevector? bstring))
-     (assume (u8-or-ascii-char? delimiter))
+     (assume (or (ascii-char? delimiter) (uint8? delimiter)))
      (unless (memv grammar '(infix strict-infix prefix suffix))
        (bytestring-error "invalid grammar" grammar))
-     (if (%bytestring-null? bstring)
+     (if (zero? (bytevector-length bstring))
          '()
          (%bytestring-split/trim-outliers
           bstring
@@ -503,8 +447,4 @@ bytestring-error? is raised."
 
 (define (write-binary-bytestring port . args)
   (assume (binary-port? port))
-  (for-each (lambda (arg)
-              (unless (valid-bytestring-segment? arg)
-                (bytestring-error "invalid bytestring element" arg)))
-            args)
   (for-each (lambda (seg) (%write-bytestring-segment seg port)) args))
