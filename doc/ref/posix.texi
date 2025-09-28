@@ -1223,6 +1223,11 @@ valid separators.  Thus, programs should not assume that
 separator---e.g., when extracting the components of a file name.
 @end defvr
 
+@deffn {Scheme Procedure} in-vicinity @var{directory} @var{file}
+Concatenate @var{directory} and @var{file}, adding
+@code{file-name-separator-string} (by default slash) in between if it is
+not already present.  This helps create file names.
+@end deffn
 
 @node User Information
 @subsection User Information

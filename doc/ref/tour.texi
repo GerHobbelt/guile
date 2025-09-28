@@ -212,8 +212,10 @@ installed manually.
 
 Here is a sample interactive session that shows how to use the
 @code{(ice-9 popen)} module which provides the means for communicating
-with other processes over pipes together with the @code{(ice-9
-rdelim)} module that provides the function @code{read-line}.
+with other processes over pipes together with the @code{(ice-9 rdelim)}
+module that provides the function @code{read-line}.@footnote{``ice-9''
+is a is a reference to the fictional substance in Kurt Vonnegut's novel,
+Cat's Cradle (@pxref{Status}).}
 
 @smallexample
 $ guile

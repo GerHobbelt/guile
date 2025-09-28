@@ -2,6 +2,9 @@ This directory contains various bits of Guile Scheme code.
 Most of these are packaged as modules, with foo.scm implementing
 the module `(ice-9 foo)'.
 
+The name ice-9 is a reference to the fictional substance in Kurt
+Vonnegut's novel, Cat's Cradle.
+
 The non-module files are:
 
 boot-9.scm	-- loaded on guile startup

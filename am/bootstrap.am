@@ -351,6 +351,7 @@ SOURCES =					\
   srfi/srfi-171.scm                             \
   srfi/srfi-171/gnu.scm                         \
   srfi/srfi-171/meta.scm                        \
+  srfi/srfi-197.scm	                        \
 						\
   statprof.scm					\
 						\

@@ -10,30 +10,88 @@
 # ./check-guile -i /usr/local/bin/guile numbers.test
 # ./check-guile -i meta/gdb-uninstalled-guile numbers.test
 
-set -e
+set -eu
+
+misuse()
+{
+    echo 'Usage: check-guile [-i GUILE] [--] [TEST...]' 1>&2
+    exit 2
+}
 
 top_builddir=@top_builddir_absolute@
 top_srcdir=@top_srcdir_absolute@
+test_suite_dir="${top_srcdir}/test-suite"
+guile="${top_builddir}/meta/guile"
+log_file=check-guile.log
+trs_file=''
 
-export TEST_SUITE_DIR="${top_srcdir}/test-suite"
-
-if [ x"$1" = x-i ] ; then
-    guile="$2"
-    shift 2
-else
-    guile="${top_builddir}/meta/guile"
-fi
-
-export GUILE_LOAD_PATH="$TEST_SUITE_DIR"
+while test $# -gt 0; do
+    case "$1" in
+        -i) test $# -gt 1 || misuse; guile="$2"; shift 2 ;;
+        --log-file) test $# -gt 1 || misuse; log_file="$2"; shift 2 ;;
+        --trs-file) test $# -gt 1 || misuse; trs_file="$2"; shift 2 ;;
+        --) break ;;
+        -*) misuse ;;
+        *) break ;;
+    esac
+done
 
 if ! [ -f "$guile" -a -x "$guile" ] ; then
     echo "ERROR: Cannot execute $guile" 1>&2
     exit 2
 fi
 
-exec "$guile" \
-    --debug \
-    -L "$TEST_SUITE_DIR" \
-    --no-auto-compile -e main -s "$TEST_SUITE_DIR/guile-test" \
-    --test-suite "$TEST_SUITE_DIR/tests" \
-    --log-file check-guile.log "$@"
+# Disallow mixed suites until/unless we can unify the log/trs files
+have_sr64=''
+have_test_lib=''
+for test_file in "$@"; do
+    case "$test_file" in
+        *.sr64) have_sr64=true ;;
+        *) have_test_lib=true ;;
+    esac
+done
+
+if test "$have_sr64" -a "$have_test_lib"; then
+    echo 'Cannot currently mix (test-suite lib) and SRFI-64 tests' 1>&2
+    exit 2
+fi
+
+exec_srfi_64()
+{
+    exec "$guile" \
+         --debug \
+         --no-auto-compile \
+         -e '(@@ (srfi srfi-64 automake) main)' \
+         -- \
+         --test-suite "$test_suite_dir/tests" \
+         --log-file "$log_file" \
+         "$@"
+}
+
+if test "$have_sr64"; then
+    if test "$trs_file"; then
+        exec_srfi_64 --trs-file "$trs_file" "$@"
+    else
+        exec_srfi_64 "$@"
+    fi
+fi
+
+exec_test_lib()
+{
+    export TEST_SUITE_DIR="$test_suite_dir"
+    export GUILE_LOAD_PATH="$test_suite_dir"
+
+    exec "$guile" \
+         --debug \
+         -L "$test_suite_dir" \
+         --no-auto-compile -e main -s "$test_suite_dir/guile-test" \
+         --test-suite "$test_suite_dir/tests" \
+         --log-file "$log_file" \
+         "$@"
+}
+
+if test "$trs_file"; then
+    exec_test_lib --trs-file "$trs_file" "$@"
+else
+    exec_test_lib "$@"
+fi

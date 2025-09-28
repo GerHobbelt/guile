@@ -161,6 +161,7 @@ SCM_TESTS = tests/00-initial-env.test		\
 	    tests/srfi-111.test			\
 	    tests/srfi-119.test			\
 	    tests/srfi-171.test			\
+	    tests/srfi-197.sr64			\
 	    tests/srfi-4.test			\
 	    tests/srfi-9.test			\
 	    tests/statprof.test			\
@@ -251,15 +252,17 @@ LALR_EXTRA +=					\
   lalr/run-guile-test.sh
 
 TESTS = $(LALR_TESTS) $(SCM_TESTS)
-TEST_EXTENSIONS = .scm .test
+TEST_EXTENSIONS = .scm .sr64 .test
 AM_TESTS_ENVIRONMENT = @LOCALCHARSET_TESTS_ENVIRONMENT@
 
 # Run *.scm tests with meta/guile
 SCM_LOG_COMPILER = $(top_builddir)/meta/guile
 AM_SCM_LOG_FLAGS = --no-auto-compile
 
-# Use a custom driver for *.test (assume they use (test-suite lib)).
-# See the automake info pages regarding "Custom Test Drivers".
+# See "Custom Test Drivers" in the Automake info pages and ./check-guile.in.
+# *.sr64 files use (srfi srfi-64 automake)
+# *.test files use (test-suite lib)
+SR64_LOG_DRIVER = $(srcdir)/driver
 TEST_LOG_DRIVER = $(srcdir)/driver
 
 EXTRA_DIST += $(LALR_EXTRA) $(LALR_TESTS) tests/sxml-match-tests.ss driver

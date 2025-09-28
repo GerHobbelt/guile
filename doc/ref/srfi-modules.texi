@@ -67,6 +67,7 @@ get the relevant SRFI documents from the SRFI home page
 * SRFI-111::                    Boxes.
 * SRFI-119::                    Wisp: simpler indentation-sensitive Scheme.
 * SRFI-171::                    Transducers
+* SRFI-197::                    Pipeline operators
 @end menu
 
 
@@ -7078,6 +7079,295 @@ until reader returns the EOF object.
 The generator version of list-reduce.  It reduces over @code{gen} until
 it returns the EOF object
 @end deffn
+
+
+@node SRFI-197
+@subsection SRFI-197: Pipeline Operators
+@cindex SRFI-197
+@cindex pipeline operators
+
+@uref{http://srfi.schemers.org/srfi-197/srfi-197.html, SRFI-197}
+provides functional pipeline (threading) operators like Clojure's
+@code{->} or OCaml's @code{|>}. Pipelines are a simple, terse, and
+readable way to write deeply-nested expressions. This SRFI defines a
+family of chain and nest pipeline operators, which can rewrite nested
+expressions like @code{(a b (c d (e f g)))} as a sequence of operations:
+@code{(chain g (e f _) (c d _) (a b _))}.
+
+Note that Like @code{let*}, @code{chain} guarantees evaluation order. In
+fact, @code{(chain a (b _) (c _))} expands to something like @code{(let*
+((x (b a)) (x (c x))) x)}, not @code{(c (b a))}, and so @code{chain} is
+not suitable for pipelines containing syntax like @code{if} or
+@code{let}.
+
+For pipelines containing complex syntax, the @code{nest} and
+@code{nest-reverse} operators look like @code{chain} but are guaranteed
+to expand to nested forms, not @code{let*} forms. @code{nest} nests in
+the opposite direction of @code{chain}, so @code{(nest (a _) (b _) c)}
+expands to @code{(a (b c))}.
+
+@deffn {Scheme Syntax} chain initial-value [placeholder [ellipsis]] step @dots{}
+Converts earch @var{part} into a sequence of small integers and returns
+a bytevector of the corresponding bytes as follows:
+
+@var{initial-value} is an expression.
+
+@var{placeholder} and @var{ellipsis} are literal symbols; these are the
+placeholder symbol and ellipsis symbol. If @var{placeholder} or
+@var{ellipsis} are not present, they default to @code{_} and @code{...},
+respectively.
+
+The syntax of @var{step} is (@var{datum} @dots{}), where each @var{datum} is
+either the placeholder symbol, the ellipsis symbol, or an expression. A
+@var{step} must contain at least one @var{datum}. The ellipsis symbol is
+only allowed at the end of a @var{step}, and it must immediately follow
+a placeholder symbol.
+
+Semantics: @code{chain} evaluates each @var{step} in order from left to right,
+passing the result of each step to the next.
+
+Each @var{step} is evaluated as an application, and the return value(s)
+of that application are passed to the next step as its pipeline
+values. @var{initial-value} is the pipeline value of the first step. The
+return value(s) of @code{chain} are the return value(s) of the last step.
+
+The placeholder symbols in each @var{step} are replaced with that step's
+pipeline values, in the order they appear. It is an error if the number
+of placeholders for a step does not equal the number of pipeline values
+for that step, unless the step contains no placeholders, in which case
+it will ignore its pipeline values.
+
+@lisp
+(chain x (a b _))
+  @result{} (a b x)
+(chain (a b) (c _ d) (e f _))
+  @result{} (let* ((x (a b)) (x (c x d))) (e f x))
+(chain (a) (b _ _) (c _))
+  @result{} (let*-values (((x1 x2) (a)) ((x) (b x1 x2))) (c x))
+@end lisp
+
+If a @var{step} ends with a placeholder symbol followed by an ellipsis
+symbol, that placeholder sequence is replaced with all remaining
+pipeline values that do not have a matching placeholder.
+
+@lisp
+(chain (a) (b _ c _ ...) (d _))
+  @result{} (let*-values (((x1 . x2) (a)) ((x) (apply b x1 c x2))) (d x))
+@end lisp
+
+@code{chain} and all other SRFI 197 macros support custom placeholder
+symbols, which can help to preserve hygiene when used in the body of a
+syntax definition that may insert a @code{_} or @code{....}
+
+@lisp
+(chain (a b) <> (c <> d) (e f <>))
+  @result{} (let* ((x (a b)) (x (c x d))) (e f x))
+(chain (a) - --- (b - c - ---) (d -))
+  @result{} (let*-values (((x1 . x2) (a)) ((x) (apply b x1 c x2))) (d x))
+@end lisp
+
+@end deffn
+
+@deffn {Scheme Syntax} chain-and initial-value [placeholder] step @dots{}
+
+@var{initial-value} is an expression. @var{placeholder} is a literal
+symbol; this is the placeholder symbol. If @var{placeholder} is not
+given, the placeholder symbol is @code{_}. The syntax of @var{step} is
+(@var{datum} @dots{} [@var{placeholder} @var{datum} @dots{}]).
+
+Semantics: A variant of @code{chain} that short-circuits and returns
+@code{#f} if any step returns @code{#f}. @code{chain-and} is to
+@code{chain} as SRFI 2 @code{and-let*} is to @code{let*}.
+
+Each @var{step} is evaluated as an application. If the step evaluates to
+@code{#f}, the remaining steps are not evaluated, and @code{chain-and}
+returns #f. Otherwise, the return value of the step is passed to the
+next step as its pipeline value. @var{initial-value} is the pipeline
+value of the first step. If no step evaluates to @code{#f}, the return
+value of @code{chain-and} is the return value of the last step.
+
+The @var{placeholder} placeholder in each @var{step} is replaced with
+that step's pipeline value. If a @var{step} does not contain
+@var{placeholder}, it will ignore its pipeline value, but
+@code{chain-and} will still check whether that pipeline value is
+@code{#f}.
+
+Because @code{chain-and} checks the return value of each step, it does
+not support steps with multiple return values. It is an error if a step
+returns more than one value.
+@end deffn
+
+@deffn {Scheme Syntax} chain-when initial-value [placeholder] ([guard] step) @dots{}
+
+@var{initial-value} and @var{guard} are expressions. @var{placeholder}
+is a literal symbol; this is the placeholder symbol. If
+@var{placeholder} is not present, the placeholder symbol is
+@code{_}. The syntax of @var{step} is (@var{datum} @dots{}
+[@var{placeholder} @var{datum} @dots{}]).
+
+Semantics: A variant of @code{chain} in which each step has a guard
+expression and will be skipped if the guard expression evaluates to #f.
+
+@lisp
+(define (describe-number n)
+  (chain-when '()
+    ((odd? n) (cons "odd" _))
+    ((even? n) (cons "even" _))
+    ((zero? n) (cons "zero" _))
+    ((positive? n) (cons "positive" _))))
+
+(describe-number 3) ; => '("positive" "odd")
+(describe-number 4) ; => '("positive" "even")
+@end lisp
+
+Each @var{step} is evaluated as an application. The return value of the
+step is passed to the next step as its pipeline
+value. @var{initial-value} is the pipeline value of the first step.
+
+The @var{placeholder} placeholder in each @var{step} is replaced with
+that step's pipeline value. If a @var{step} does not contain
+@var{placeholder}, it will ignore its pipeline value.
+
+If a step's @var{guard} is present and evaluates to @code{#f}, that step
+will be skipped, and its pipeline value will be reused as the pipeline
+value of the next step. The return value of @code{chain-when} is the
+return value of the last non-skipped step, or @var{initial-value} if all
+steps are skipped.
+
+Because @code{chain-when} may skip steps, it does not support steps with
+multiple return values. It is an error if a step returns more than one
+value.
+@end deffn
+
+@deffn {Scheme Syntax} chain-lambda [placeholder [ellipsis]] step @dots{}
+
+@var{placeholder} and @var{ellipsis} are literal symbols; these are the
+placeholder symbol and ellipsis symbol. If @var{placeholder} or
+@var{ellipsis} are not present, they default to @code{_} and @code{...},
+respectively.
+
+The syntax of @var{step} is (@var{datum} @dots{}), where each
+@var{datum} is either the placeholder symbol, the ellipsis symbol, or an
+expression. A @var{step} must contain at least one @var{datum}. The
+ellipsis symbol is only allowed at the end of a @var{step}, and it must
+immediately follow a placeholder symbol.
+
+Semantics: Creates a procedure from a sequence of @code{chain}
+steps. When called, a @code{chain-lambda} procedure evaluates each
+@var{step} in order from left to right, passing the result of each step
+to the next.
+
+@lisp
+(chain-lambda (a _) (b _))
+  @result{} (lambda (x) (let* ((x (a x))) (b x)))
+(chain-lambda (a _ _) (b c _))
+  @result{} (lambda (x1 x2) (let* ((x (a x1 x2))) (b c x)))
+@end lisp
+
+Each @var{step} is evaluated as an application, and the return value(s)
+of that application are passed to the next step as its pipeline
+values. The procedure's arguments are the pipeline values of the first
+step. The return value(s) of the procedure are the return value(s) of
+the last step.
+
+The placeholder symbols in each @var{step} are replaced with that step's
+pipeline values, in the order they appear. It is an error if the number
+of placeholders for a step does not equal the number of pipeline values
+for that step, unless the step contains no placeholders, in which case
+it will ignore its pipeline values.
+
+If a @var{step} ends with a placeholder symbol followed by an ellipsis
+symbol, that placeholder sequence is replaced with all remaining
+pipeline values that do not have a matching placeholder.
+
+The number of placeholders in the first @var{step} determines the arity
+of the procedure. If the first step ends with an ellipsis symbol, the
+procedure is variadic.
+@end deffn
+
+@deffn {Scheme Syntax} nest [placeholder] <step> @dots{} initial-value
+
+@var{placeholder} is a literal symbol; this is the placeholder
+symbol. If @var{placeholder} is not present, the placeholder symbol is
+@code{_}. The syntax of @var{step} is (@var{datum} @dots{}
+@var{placeholder} @var{datum} @dots{}). @var{initial-value} is an
+expression.
+
+Semantics: @code{nest} is similar to @code{chain}, but sequences its
+steps in the opposite order. Unlike @code{chain}, @code{nest} literally
+nests expressions; as a result, it does not provide the same strict
+evaluation order guarantees as @code{chain}.
+
+@lisp
+(nest (a b _) (c d _) e) ; => (a b (c d e))
+@end lisp
+
+A @code{nest} expression is evaluated by lexically replacing the
+@var{placeholder} in the last @var{step} with @var{initial-value}, then
+replacing the @var{placeholder} in the next-to-last @var{step} with that
+replacement, and so on until the @var{placeholder} in the first
+@var{step} has been replaced. It is an error if the resulting final
+replacement is not an expression, which is then evaluated and its values
+are returned.
+
+Because it produces an actual nested form, @code{nest} can build
+expressions that @code{chain} cannot. For example, @code{nest} can build
+a quoted data structure:
+
+@lisp
+(nest '_ (1 2 _) (3 _ 5) (_) 4) ; => '(1 2 (3 (4) 5))
+@end lisp
+
+@code{nest} can also safely include special forms like if, let, lambda, or parameterize in a pipeline.
+
+A custom placeholder can be used to safely nest @code{nest} expressions.
+
+@lisp
+(nest (nest _2 '_2 (1 2 3 _2) _ 6)
+      (_ 5 _2)
+      4)
+  @result{} '(1 2 3 (4 5 6))
+@end lisp
+@end deffn
+
+@deffn {Scheme Syntax} nest-reverse initial-value [placeholder] step @dots{}
+
+Syntax: @var{initial-value} is an expression. @var{placeholder} is a
+literal symbol; this is the placeholder symbol. If @var{placeholder} is
+not present, the placeholder symbol is @code{_}. The syntax of
+@var{step} is (@var{datum} @dots{} @var{placeholder} @var{datum}
+@dots{}).
+
+Semantics: @code{nest-reverse} is variant of @code{nest} that nests in
+reverse order, which is the same order as @code{chain}.
+
+@lisp
+(nest-reverse e (c d _) (a b _)) ; => (a b (c d e))
+@end lisp
+
+A @code{nest-reverse} expression is evaluated by lexically replacing the
+@var{placeholder} in the first @var{step} with @var{initial-value}, then
+replacing the @var{placeholder} in the second @var{step} with that
+replacement, and so on until the @var{placeholder} in the last
+@var{step} has been replaced. It is an error if the resulting final
+replacement is not an expression, which is then evaluated and its values
+are returned.
+@end deffn
+
+@subsubsection Acknowledgements
+
+Thanks to the participants in the SRFI 197 mailing list who helped Adam
+Nelson refine this SRFI, including Marc Nieper-Wißkirchen, Linus
+Björnstam, Shiro Kawai, Lassi Kortela, and John Cowan.
+
+Marc provided a paragraph that has been included (with only minor
+changes) in the Semantics section of the nest and nest-reverse macros.
+
+Thanks to Rich Hickey for @url{https://clojure.org, Clojure} and the
+original implementation of Clojure threading macros, and to Paulus
+Esterhazy for the (EPL licensed) threading macros documentation page,
+which was a source of inspiration and some of the examples in this
+document.
 
 @c srfi-modules.texi ends here
 
