@@ -25,46 +25,13 @@
 ;;; (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 ;;; THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-;;;; Constants and tables
-
-(define outside-char 99) ; luft-balloons
-(define pad-char 101)    ; dalmations
+;;;; Decoding
 
 (define (outside-char? x) (eqv? x outside-char))
 (define (pad-char? x) (eqv? x pad-char))
 
-(define (make-base64-decode-table digits)
-  (let ((extra-1 (char->integer (string-ref digits 0)))
-        (extra-2 (char->integer (string-ref digits 1))))
-    (vector-unfold
-     (lambda (i)
-       (cond ((and (>= i 48) (< i 58)) (+ i 4))   ; numbers
-             ((and (>= i 65) (< i 91)) (- i 65))  ; upper case letters
-             ((and (>= i 97) (< i 123)) (- i 71)) ; lower case letters
-             ((= i extra-1) 62)
-             ((= i extra-2) 63)
-             ((= i 61) pad-char)                  ; '='
-             (else outside-char)))
-     #x100)))
-
-(define (base64-decode-u8 table u8)
-  (vector-ref table u8))
-
-(define (make-base64-encode-table digits)
-  (vector-unfold
-   (lambda (i)
-     (cond ((< i 26) (+ i 65))  ; upper-case letters
-           ((< i 52) (+ i 71))  ; lower-case letters
-           ((< i 62) (- i 4))   ; numbers
-           ((= i 62) (char->integer (string-ref digits 0)))
-           ((= i 63) (char->integer (string-ref digits 1)))
-           (else (error "out of range"))))
-   64))
-
-;;;; Decoding
-
 (define (decode-base64-string src digits)
-  (let ((table (make-base64-decode-table digits)))
+  (let ((table (get-base64-decode-table digits)))
     (call-with-port
      (open-output-bytevector)
      (lambda (out)
@@ -79,7 +46,7 @@
       (if (= i len)
           (decode-base64-trailing port b1 b2 b3)
           (let* ((c (string-ref src i))
-                 (b (base64-decode-u8 table (char->integer c))))
+                 (b (bytevector-u8-ref table (char->integer c))))
             (cond ((pad-char? b) (decode-base64-trailing port b1 b2 b3))
                   ((char-whitespace? c) (lp (+ i 1) b1 b2 b3))
                   ((outside-char? b)
@@ -124,13 +91,13 @@
          (rem (- len (* quot 3)))
          (res-len (arithmetic-shift (+ quot (if (zero? rem) 0 1)) 2))
          (res (make-bytevector res-len))
-         (table (make-base64-encode-table digits)))
+         (table (get-base64-encode-table digits)))
     (base64-encode-bytevector! bv 0 len res table)
     res))
 
 (define (base64-encode-bytevector! bv start end res table)
   (let ((limit (- end 2))
-        (enc (lambda (i) (vector-ref table i))))
+        (enc (lambda (i) (bytevector-u8-ref table i))))
     (let lp ((i start) (j 0))
       (if (>= i limit)
           (case (- end i)

@@ -84,6 +84,7 @@
     ((bvec digits)
      (assume (bytevector? bvec))
      (assume (string? digits))
+     (assume (= 2 (string-length digits)))
      (utf8->string (base64-encode-bytevector bvec digits)))))
 
 (define base64->bytevector
@@ -92,6 +93,7 @@
     ((base64-string digits)
      (assume (string? base64-string))
      (assume (string? digits))
+     (assume (= 2 (string-length digits)))
      (decode-base64-string base64-string digits))))
 
 (define bytestring->list
@@ -116,7 +118,7 @@
                  (if (and (>= b #x20) (< b #x7f))
                      (integer->char b)
                      b)))
-             (lambda (i) (+ i 1))
+             1+
              start))))
 
 (define (make-bytestring-generator . args)
@@ -246,7 +248,7 @@ bytestring-error? is raised."
 (define (%bytestring-prefix-length bstring1 bstring2)
   (let ((end (min (bytevector-length bstring1)
                   (bytevector-length bstring2))))
-    (if (eqv? bstring1 bstring2)  ; fast path
+    (if (eq? bstring1 bstring2)  ; fast path
         end
         (let lp ((i 0))
           (if (or (>= i end)
@@ -273,19 +275,19 @@ bytestring-error? is raised."
 (define (bytestring<? bstring1 bstring2)
   (assume (bytevector? bstring1))
   (assume (bytevector? bstring2))
-  (and (not (eqv? bstring1 bstring2))
+  (and (not (eq? bstring1 bstring2))
        (%bytestring-compare bstring1 bstring2 #t #f #f)))
 
 (define (bytestring>? bstring1 bstring2)
   (assume (bytevector? bstring1))
   (assume (bytevector? bstring2))
-  (and (not (eqv? bstring1 bstring2))
+  (and (not (eq? bstring1 bstring2))
        (%bytestring-compare bstring1 bstring2 #f #f #t)))
 
 (define (bytestring<=? bstring1 bstring2)
   (assume (bytevector? bstring1))
   (assume (bytevector? bstring2))
-  (or (eqv? bstring1 bstring2)
+  (or (eq? bstring1 bstring2)
       (%bytestring-compare bstring1 bstring2 #t #t #f)))
 
 (define (bytestring>=? bstring1 bstring2)
@@ -346,34 +348,7 @@ bytestring-error? is raised."
                    (bytevector-copy bstring len))))
         (else (values (bytevector-copy bstring) (bytevector)))))
 
-;;;; Joining & Splitting
-
-(define (%bytestring-join-nonempty bstrings delimiter grammar)
-  (call-with-port
-   (open-output-bytevector)
-   (lambda (out)
-     (when (eqv? grammar 'prefix) (write-bytevector delimiter out))
-     (write-bytevector (car bstrings) out)
-     (for-each (lambda (bstr)
-                 (write-bytevector delimiter out)
-                 (write-bytevector bstr out))
-               (cdr bstrings))
-     (when (eqv? grammar 'suffix) (write-bytevector delimiter out))
-     (get-output-bytevector out))))
-
-(define bytestring-join
-  (case-lambda
-    ((bstrings delimiter) (bytestring-join bstrings delimiter 'infix))
-    ((bstrings delimiter grammar)
-     (assume (or (pair? bstrings) (null? bstrings)))
-     (unless (memv grammar '(infix strict-infix prefix suffix))
-       (bytestring-error "invalid grammar" grammar))
-     (let ((delim-bstring (bytestring delimiter)))
-       (if (pair? bstrings)
-           (%bytestring-join-nonempty bstrings delim-bstring grammar)
-           (if (eqv? grammar 'strict-infix)
-               (bytestring-error "empty list with strict-infix grammar")
-               (bytevector)))))))
+;;;; Splitting
 
 (define (%find-right bstring byte end)
   (bytestring-index-right bstring (lambda (b) (= b byte)) 0 end))
