@@ -221,7 +221,7 @@ scm_ramapc (void *cproc_ptr, SCM data, SCM ra0, SCM lra, const char *what)
 #undef LBND
 
 static int
-rafill (SCM dst, SCM fill)
+rafill (SCM dst, SCM fill, SCM ignored)
 {
   size_t n = SCM_I_ARRAY_DIMS (dst)->ubnd + 1;
   size_t i = SCM_I_ARRAY_BASE (dst);

@@ -368,7 +368,7 @@ static scm_i_pthread_mutex_t thread_admin_mutex = SCM_I_PTHREAD_MUTEX_INITIALIZE
 static scm_thread *all_threads = NULL;
 static int thread_count;
 
-static SCM default_dynamic_state;
+static SCM default_dynamic_state = SCM_BOOL_F;
 
 /* Perform first stage of thread initialisation, in non-guile mode.
  */
@@ -594,6 +594,11 @@ scm_i_init_thread_for_guile (struct GC_stack_base *base,
           if (GC_register_my_thread (base) == GC_SUCCESS)
             needs_unregister = 1;
 #endif
+
+          // We were blocked while another thread was initializing
+          // guile, so we need to re-read the (now correct) state.
+          if (scm_is_eq (dynamic_state, SCM_BOOL_F))
+            dynamic_state = default_dynamic_state;
 
 	  guilify_self_1 (base, needs_unregister);
 	  guilify_self_2 (dynamic_state);
@@ -1827,7 +1832,6 @@ scm_init_threads ()
 					 sizeof (struct scm_cond));
   scm_set_smob_print (scm_tc16_condvar, scm_cond_print);
 
-  default_dynamic_state = SCM_BOOL_F;
   guilify_self_2 (scm_i_make_initial_dynamic_state ());
   threads_initialized_p = 1;
 

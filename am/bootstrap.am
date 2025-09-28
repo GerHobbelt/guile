@@ -59,6 +59,11 @@ ice-9/match.go: ice-9/match.scm ice-9/match.upstream.scm
 ice-9/psyntax-pp.go: ice-9/psyntax.scm ice-9/psyntax-pp.scm
 	$(COMPILE) -o "$@" "$<"
 
+srfi/srfi-207.go: \
+  srfi/srfi-207.scm \
+  srfi/srfi-207/upstream/base64.scm \
+  srfi/srfi-207/upstream/bytestrings-impl.scm
+
 # All sources.  We can compile these in any order; the order below is
 # designed to hopefully result in the lowest total compile time.
 SOURCES =					\
@@ -352,6 +357,7 @@ SOURCES =					\
   srfi/srfi-171/gnu.scm                         \
   srfi/srfi-171/meta.scm                        \
   srfi/srfi-197.scm	                        \
+  srfi/srfi-207.scm	                        \
 						\
   statprof.scm					\
 						\

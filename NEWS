@@ -205,6 +205,11 @@ change.
 ** A numer of test incompatibilities with Darwin hosts have been fixed
    (<https://bugs.gnu.org/72547>)
 ** define guile-test as non-declarative because it uses load
+** make-struct/no-tail and scm_c_make_structv no longer segfault
+   Previously they could if given the standard-vtable-fields, but inital
+   values that weren't compatible with a vtable.
+   (<https://bugs.gnu.org/78789>)
+** 'tmpfile' preserves O_CLOEXEC so children won't prevent removal on exit
 
 
 Changes in 3.0.10 (since 3.0.9)
