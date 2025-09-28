@@ -15,7 +15,7 @@ Guile
 @node GOOPS
 @chapter GOOPS
 
-@goops{} is the object oriented extension to @guile{}. Its
+@goops{} is the ``@guile{} Object Oriented Programming System''.  Its
 implementation is derived from @w{STk-3.99.3} by Erick Gallesio and
 version 1.3 of Gregor Kiczales' @cite{Tiny-Clos}.  It is very close in
 spirit to CLOS, the Common Lisp Object System, but is adapted for the
